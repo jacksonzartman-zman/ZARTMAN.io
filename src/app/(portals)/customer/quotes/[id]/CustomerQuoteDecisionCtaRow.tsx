@@ -29,10 +29,12 @@ const PRIMARY_ACTIVE_CLASSES =
   "inline-flex min-h-11 items-center justify-center rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-black shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400";
 const PRIMARY_DISABLED_CLASSES =
   "cursor-not-allowed bg-slate-800 text-slate-400 shadow-none hover:bg-slate-800";
-const SECONDARY_ACTIVE_CLASSES =
-  "inline-flex min-h-11 items-center justify-center text-sm font-semibold text-slate-300 transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500";
-const SECONDARY_DISABLED_CLASSES =
-  "cursor-not-allowed text-slate-500 hover:text-slate-500";
+const SECONDARY_MENU_SUMMARY_CLASSES =
+  "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-950/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 motion-reduce:transition-none";
+const SECONDARY_MENU_ITEM_CLASSES =
+  "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-200 transition hover:bg-slate-900/60 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 motion-reduce:transition-none";
+const SECONDARY_MENU_ITEM_DISABLED_CLASSES =
+  "cursor-not-allowed text-slate-500 hover:bg-transparent hover:text-slate-500";
 
 export function CustomerQuoteDecisionCtaRow({
   quoteId,
@@ -81,16 +83,8 @@ export function CustomerQuoteDecisionCtaRow({
     secondary.kind === "share"
       ? !sharePath
       : Boolean(secondary.disabled) || !secondary.href;
-  const secondaryClasses = clsx(
-    SECONDARY_ACTIVE_CLASSES,
-    secondaryDisabled && SECONDARY_DISABLED_CLASSES,
-  );
 
   const inviteDisabled = !quoteId || !sharePath;
-  const inviteClasses = clsx(
-    SECONDARY_ACTIVE_CLASSES,
-    inviteDisabled && SECONDARY_DISABLED_CLASSES,
-  );
 
   return (
     <>
@@ -108,35 +102,65 @@ export function CustomerQuoteDecisionCtaRow({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-4">
-            {secondary ? (
-              secondary.kind === "share" ? (
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  disabled={secondaryDisabled}
-                  className={secondaryClasses}
-                >
-                  {shareLabel}
-                </button>
-              ) : secondaryDisabled ? (
-                <button type="button" disabled className={secondaryClasses}>
-                  {secondary.label}
-                </button>
-              ) : (
-                <Link href={secondary.href ?? "#"} className={secondaryClasses}>
-                  {secondary.label}
-                </Link>
-              )
-            ) : null}
+            <details className="group relative">
+              <summary className={clsx(SECONDARY_MENU_SUMMARY_CLASSES, "cursor-pointer list-none select-none")}>
+                <span className="flex items-center gap-2">
+                  <span>More</span>
+                  <span
+                    className="text-slate-400 transition group-open:text-slate-200 motion-reduce:transition-none"
+                    aria-hidden
+                  >
+                    ▾
+                  </span>
+                </span>
+              </summary>
+              <div className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-xl border border-slate-900/70 bg-slate-950 shadow-xl">
+                <div className="flex flex-col gap-1 p-2">
+                  {secondary ? (
+                    secondary.kind === "share" ? (
+                      <button
+                        type="button"
+                        onClick={handleShare}
+                        disabled={secondaryDisabled}
+                        className={clsx(
+                          SECONDARY_MENU_ITEM_CLASSES,
+                          secondaryDisabled && SECONDARY_MENU_ITEM_DISABLED_CLASSES,
+                        )}
+                      >
+                        {shareLabel}
+                      </button>
+                    ) : secondaryDisabled ? (
+                      <button
+                        type="button"
+                        disabled
+                        className={clsx(SECONDARY_MENU_ITEM_CLASSES, SECONDARY_MENU_ITEM_DISABLED_CLASSES)}
+                      >
+                        {secondary.label}
+                      </button>
+                    ) : (
+                      <Link
+                        href={secondary.href ?? "#"}
+                        className={SECONDARY_MENU_ITEM_CLASSES}
+                      >
+                        {secondary.label}
+                      </Link>
+                    )
+                  ) : null}
 
-            <button
-              type="button"
-              onClick={() => setInviteOpen(true)}
-              disabled={inviteDisabled}
-              className={inviteClasses}
-            >
-              Invite teammate
-            </button>
+                  <button
+                    type="button"
+                    onClick={() => setInviteOpen(true)}
+                    disabled={inviteDisabled}
+                    className={clsx(
+                      SECONDARY_MENU_ITEM_CLASSES,
+                      inviteDisabled && SECONDARY_MENU_ITEM_DISABLED_CLASSES,
+                    )}
+                  >
+                    Invite teammate
+                  </button>
+                </div>
+              </div>
+            </details>
 
             {primaryDisabled ? (
               <button type="button" disabled className={primaryClasses}>
