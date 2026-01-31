@@ -4,7 +4,6 @@ import PortalCard from "@/app/(portals)/PortalCard";
 import {
   PortalShell,
   PORTAL_SURFACE_CARD,
-  PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
 } from "@/app/(portals)/components/PortalShell";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
@@ -48,16 +47,18 @@ export default async function CustomerMessagesPage() {
       <PortalCard
         title="Messages"
         header={false}
-        className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
+        className={`${PORTAL_SURFACE_CARD} p-0`}
       >
         {rows.length === 0 ? (
-          <EmptyStateCard
-            title="No conversations yet"
-            description="Messages will appear here once RFQs are in progress."
-            action={{ label: "View RFQs", href: "/customer/quotes" }}
-          />
+          <div className="p-6">
+            <EmptyStateCard
+              title="No conversations yet"
+              description="Messages will appear here once RFQs are in progress."
+              action={{ label: "View RFQs", href: "/customer/quotes" }}
+            />
+          </div>
         ) : (
-          <div className={`${PORTAL_SURFACE_CARD} overflow-hidden`}>
+          <div className="overflow-hidden">
             <div className="divide-y divide-slate-800/40">
               {rows.map((row) => {
                 const threadLabel = resolveThreadStatusLabel("customer", row.needsReplyFrom);
@@ -66,13 +67,15 @@ export default async function CustomerMessagesPage() {
                   formatRelativeTimeCompactFromTimestamp(toTimestamp(row.lastMessageAt)) ?? "—";
                 const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
                 const href = `/customer/quotes/${row.quoteId}?tab=messages#messages`;
-                const rfqIdLabel = row.quoteId.startsWith("Q-") ? row.quoteId : `#${row.quoteId.slice(0, 6)}`;
+                const rfqIdLabel = row.quoteId.startsWith("Q-")
+                  ? row.quoteId
+                  : `#${row.quoteId.slice(0, 6)}`;
                 const preview = row.lastMessagePreview?.trim() ? row.lastMessagePreview : "—";
 
                 return (
                   <div
                     key={row.quoteId}
-                    className="flex flex-col gap-3 px-5 py-4 hover:bg-slate-900/20 md:h-16 md:flex-row md:items-center md:gap-6 md:py-0"
+                    className="flex flex-col gap-3 px-6 py-4 hover:bg-slate-900/20 md:h-16 md:flex-row md:items-center md:gap-6 md:py-0"
                   >
                     <div className="min-w-0 flex-1">
                       <Link

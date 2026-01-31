@@ -5,7 +5,7 @@ import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesList } from "@/server/customer/quotesList";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import PortalCard from "../../PortalCard";
-import { PortalShell, PORTAL_SURFACE_CARD_INTERACTIVE_QUIET } from "../../components/PortalShell";
+import { PortalShell, PORTAL_SURFACE_CARD } from "../../components/PortalShell";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { CustomerQuotesListClient } from "./CustomerQuotesListClient";
 import { primaryCtaClasses } from "@/lib/ctas";
@@ -205,14 +205,16 @@ export default async function CustomerQuotesPage({
       <PortalCard
         title="RFQs"
         header={false}
-        className={clsx("p-7", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
+        className={clsx(PORTAL_SURFACE_CARD, "p-0")}
       >
         {sortedQuotes.length === 0 ? (
-          <EmptyStateCard
-            title="No RFQs yet"
-            description="Upload a part to start a search. We’ll keep status, offers, and updates here."
-            action={{ label: "Upload new part", href: "/quote" }}
-          />
+          <div className="p-6">
+            <EmptyStateCard
+              title="No RFQs yet"
+              description="Upload a part to start a search. We’ll keep status, offers, and updates here."
+              action={{ label: "Upload new part", href: "/quote" }}
+            />
+          </div>
         ) : (
           <CustomerQuotesListClient rows={rows} />
         )}

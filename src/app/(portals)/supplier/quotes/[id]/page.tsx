@@ -1172,7 +1172,7 @@ function SupplierQuoteWorkspace({
     >
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
-      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.72fr)_minmax(0,0.28fr)] lg:gap-6 lg:space-y-0">
+      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.74fr)_minmax(0,0.26fr)] lg:gap-6 lg:space-y-0">
         <div className="space-y-5">
           {winnerCallout}
           <OneTimeLocalStorageAffirmation

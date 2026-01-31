@@ -9,7 +9,11 @@ type PortalContainerProps = {
 export function PortalContainer({ children, className }: PortalContainerProps) {
   return (
     <div
-      className={clsx("mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8", className)}
+      className={clsx(
+        // 12-col portal rails target ~320–360px on lg+ (3/12 of 84rem ≈ 336px)
+        "mx-auto w-full max-w-[84rem] px-4 sm:px-6 lg:px-8",
+        className,
+      )}
     >
       {children}
     </div>
