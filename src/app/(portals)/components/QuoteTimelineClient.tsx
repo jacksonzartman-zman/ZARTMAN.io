@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { QuoteEventRecord } from "@/server/quotes/events";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 import {
   groupTimelineEventsByPhase,
   isMessageTimelineEvent,
@@ -135,9 +136,11 @@ export function QuoteTimelineClient({
       </header>
 
       {!hasAnyEvents ? null : !hasAnyFiltered ? (
-        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-3 text-sm text-slate-300">
-          No updates match this filter.
-        </p>
+        <EmptyStateCard
+          title="No updates match this filter"
+          description="Try another filter to see messages, status changes, and kickoff activity."
+          className="px-4 py-3"
+        />
       ) : (
         <div className="space-y-6">
           {PHASE_ORDER.map((phase) => {
