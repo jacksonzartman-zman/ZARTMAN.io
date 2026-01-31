@@ -1854,6 +1854,15 @@ export default async function CustomerQuoteDetailPage({
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       {showDemoModeBanner ? <DemoModeBanner /> : null}
+      <div className="lg:sticky lg:top-4 z-30">
+        <CustomerQuoteJourneyHeaderAuto
+          partName={primaryFileName}
+          status={workspaceStatus}
+          nextStepText={nextStepText}
+          fileCount={fileCount}
+          hasWinner={quoteHasWinner}
+        />
+      </div>
       <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.74fr)_minmax(0,0.26fr)] lg:gap-6 lg:space-y-0">
         <div className="space-y-6">
           {awardedSupplierCard}
