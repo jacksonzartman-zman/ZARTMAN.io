@@ -302,7 +302,7 @@ async function SupplierDashboardPage({
           <PortalCard
             title="Step 3 · Active projects"
             description="Awarded work in progress."
-            className={`${PORTAL_SURFACE_CARD_INTERACTIVE_QUIET} p-5`}
+            className={`${PORTAL_SURFACE_CARD_INTERACTIVE_QUIET} p-4`}
             action={
               supplierExists ? (
                 <Link
