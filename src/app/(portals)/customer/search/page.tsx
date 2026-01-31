@@ -5,7 +5,10 @@ import clsx from "clsx";
 import type { ReactNode } from "react";
 
 import PortalCard from "@/app/(portals)/PortalCard";
-import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import {
+  PortalShell,
+  PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
+} from "@/app/(portals)/components/PortalShell";
 import { CustomerQuoteCompareOffers } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteCompareOffers";
 import { CustomerQuoteRefreshResultsButton } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteRefreshResultsButton";
 import { CustomerSearchActions } from "@/app/(portals)/customer/search/CustomerSearchActions";
@@ -650,7 +653,11 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
         <aside className="space-y-4">
-          <PortalCard title="Filters" description="Refine which providers appear in results.">
+          <PortalCard
+            title="Filters"
+            description="Refine which providers appear in results."
+            className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
+          >
             <form method="get" className="space-y-4">
               {activeQuote ? (
                 <input type="hidden" name="quote" value={activeQuote.id} />

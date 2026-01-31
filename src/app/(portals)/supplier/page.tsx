@@ -4,7 +4,7 @@ import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import { SystemStatusBar } from "../SystemStatusBar";
 import { DataFallbackNotice } from "../DataFallbackNotice";
-import { PortalShell } from "../components/PortalShell";
+import { PortalShell, PORTAL_SURFACE_CARD_INTERACTIVE_QUIET } from "../components/PortalShell";
 import NewRfqsTable from "./NewRfqsTable";
 import ActiveJobsTable from "./ActiveJobsTable";
 import { getServerAuthUser } from "@/server/auth";
@@ -37,9 +37,6 @@ import { AwardedJobSuccessBanner } from "./AwardedJobSuccessBanner";
 import { SupplierFunnelBanner } from "./components/SupplierFunnelBanner";
 
 export const dynamic = "force-dynamic";
-
-const QUIET_CARD_CLASSNAME =
-  "border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none";
 
 type SupplierDashboardPageProps = {
   searchParams?: SearchParamsLike;
@@ -305,7 +302,7 @@ async function SupplierDashboardPage({
           <PortalCard
             title="Step 3 · Active projects"
             description="Awarded work in progress."
-            className={`${QUIET_CARD_CLASSNAME} p-5`}
+            className={`${PORTAL_SURFACE_CARD_INTERACTIVE_QUIET} p-5`}
             action={
               supplierExists ? (
                 <Link
@@ -344,7 +341,7 @@ async function SupplierDashboardPage({
             <PortalCard
               title="Quick setup"
               description="Two steps to ensure you receive the right RFQs."
-              className={`${QUIET_CARD_CLASSNAME} p-5`}
+              className={`${PORTAL_SURFACE_CARD_INTERACTIVE_QUIET} p-5`}
             >
               <ul className="space-y-2 text-sm">
                 {!hasCapabilities ? (

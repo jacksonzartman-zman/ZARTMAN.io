@@ -23,6 +23,16 @@ export const PORTAL_SURFACE_CARD_INTERACTIVE = clsx(
   "hover:border-slate-700/70 hover:bg-slate-950/55 hover:shadow-[0_10px_30px_rgba(2,6,23,0.34)]",
 );
 
+/**
+ * Secondary / supporting portal panels.
+ * Intentionally quieter than the primary surface to reinforce hierarchy.
+ *
+ * NOTE: `PortalCard` applies `PORTAL_SURFACE_CARD_INTERACTIVE` by default, so this token is
+ * designed to be passed via `className` to override the heavier background + shadow.
+ */
+export const PORTAL_SURFACE_CARD_INTERACTIVE_QUIET =
+  "border-slate-900/40 bg-slate-950/18 shadow-[0_4px_14px_rgba(2,6,23,0.14)] hover:border-slate-900/50 hover:bg-slate-950/22 hover:shadow-[0_6px_18px_rgba(2,6,23,0.16)]";
+
 export const PORTAL_SURFACE_HEADER =
   "rounded-3xl border border-slate-800/60 bg-slate-950/60 shadow-[0_18px_40px_rgba(2,6,23,0.6)]";
 

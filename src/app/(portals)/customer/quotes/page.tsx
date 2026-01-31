@@ -5,7 +5,7 @@ import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesList } from "@/server/customer/quotesList";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import PortalCard from "../../PortalCard";
-import { PortalShell } from "../../components/PortalShell";
+import { PortalShell, PORTAL_SURFACE_CARD_INTERACTIVE_QUIET } from "../../components/PortalShell";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { CustomerQuotesListClient } from "./CustomerQuotesListClient";
 import { primaryCtaClasses } from "@/lib/ctas";
@@ -13,9 +13,6 @@ import { primaryCtaClasses } from "@/lib/ctas";
 export const dynamic = "force-dynamic";
 
 type RfqStatusTone = "slate" | "blue" | "emerald" | "amber" | "muted";
-
-const QUIET_CARD_CLASSNAME =
-  "border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none";
 
 function clsx(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -211,7 +208,7 @@ export default async function CustomerQuotesPage({
           <PortalCard
             title="Shortcuts"
             description="Secondary surfaces—quick jumps back into execution and conversations."
-            className={clsx("p-5", QUIET_CARD_CLASSNAME)}
+            className={clsx("p-5", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
           >
             <ul className="space-y-3 text-sm">
               <li className="flex items-center justify-between gap-3">
@@ -238,7 +235,7 @@ export default async function CustomerQuotesPage({
           <PortalCard
             title="How to scan this list"
             description="Primary title, status, then meta—kept intentionally quiet."
-            className={clsx("p-5", QUIET_CARD_CLASSNAME)}
+            className={clsx("p-5", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
           >
             <ul className="list-disc space-y-2 pl-5 text-sm text-slate-300">
               <li>
@@ -259,7 +256,7 @@ export default async function CustomerQuotesPage({
           <PortalCard
             title="Need to start a new RFQ?"
             description="Upload CAD, drawings, or a ZIP—then we’ll route it for offers."
-            className={clsx("p-5", QUIET_CARD_CLASSNAME)}
+            className={clsx("p-5", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
             action={
               <Link
                 href="/quote"

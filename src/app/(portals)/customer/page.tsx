@@ -20,7 +20,7 @@ import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
-import { PortalShell } from "../components/PortalShell";
+import { PortalShell, PORTAL_SURFACE_CARD_INTERACTIVE_QUIET } from "../components/PortalShell";
 import { QuoteStatusBadge } from "../components/QuoteStatusBadge";
 import { loadRecentCustomerActivity } from "@/server/customers/activity";
 import { loadCustomerOnboardingState } from "@/server/customer/onboarding";
@@ -43,8 +43,6 @@ export const dynamic = "force-dynamic";
 
 const QUOTE_LIMIT = 20;
 const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
-const QUIET_CARD_CLASSNAME =
-  "border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none";
 
 const TARGET_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -401,7 +399,7 @@ async function CustomerDashboardPage({
       <PortalCard
         title="Updates"
         description="Recent activity and decisions that keep offers moving."
-        className={QUIET_CARD_CLASSNAME}
+        className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
       >
         <div className="space-y-6">
           <section className="space-y-3">
@@ -493,7 +491,7 @@ async function CustomerDashboardPage({
             ? "Read-only preview details."
             : "Occasionally useful for support or demos."
         }
-        className={QUIET_CARD_CLASSNAME}
+        className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
       >
         <details className="group">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-950/55">
