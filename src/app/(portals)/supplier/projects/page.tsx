@@ -18,6 +18,15 @@ import { requireUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { getSupplierAwardedQuotesForProjects } from "@/server/supplier/projects";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
+import {
+  PORTAL_CELL,
+  PORTAL_CELL_RIGHT,
+  PORTAL_DIVIDER,
+  PORTAL_ROW,
+  PORTAL_TH,
+  PORTAL_TH_RIGHT,
+  PORTAL_TITLE,
+} from "@/app/(portals)/components/portalTableRhythm";
 
 export const dynamic = "force-dynamic";
 
@@ -118,24 +127,24 @@ export default async function SupplierProjectsPage() {
           />
         ) : (
           <div className="overflow-hidden">
-            <table className="min-w-full divide-y divide-slate-800/40 text-sm">
+            <table className="min-w-full text-sm">
               <thead className="bg-transparent">
                 <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <th className={PORTAL_TH}>
                     Project
                   </th>
-                  <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
+                  <th className={`hidden md:table-cell ${PORTAL_TH}`}>
                     Kickoff
                   </th>
-                  <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 lg:table-cell">
+                  <th className={`hidden lg:table-cell ${PORTAL_TH}`}>
                     Last message
                   </th>
-                  <th className="hidden px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
+                  <th className={`hidden md:table-cell ${PORTAL_TH_RIGHT}`}>
                     Open
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/40">
+              <tbody className={PORTAL_DIVIDER}>
                 {projects.map((project) => {
                   const customerLabel = project.customerName?.trim()
                     ? project.customerName
@@ -158,13 +167,13 @@ export default async function SupplierProjectsPage() {
                   return (
                     <tr
                       key={project.id}
-                      className="hover:bg-slate-900/20 transition-colors motion-reduce:transition-none"
+                      className={PORTAL_ROW}
                     >
-                      <td className="px-5 py-4 align-middle">
+                      <td className={PORTAL_CELL}>
                         <div className="flex flex-col gap-2">
                           <div className="space-y-1">
-                            <span className="text-sm font-semibold leading-tight text-slate-100">
-                            {project.projectName}
+                            <span className={PORTAL_TITLE}>
+                              {project.projectName}
                             </span>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                               <span>
@@ -213,7 +222,7 @@ export default async function SupplierProjectsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="hidden px-5 py-4 align-middle md:table-cell">
+                      <td className={`hidden md:table-cell ${PORTAL_CELL}`}>
                         <div className="space-y-1">
                           <p className={clsx("font-medium", kickoff.tone)}>
                             {kickoff.label}
@@ -223,7 +232,7 @@ export default async function SupplierProjectsPage() {
                           </p>
                         </div>
                       </td>
-                      <td className="hidden px-5 py-4 align-middle lg:table-cell">
+                      <td className={`hidden lg:table-cell ${PORTAL_CELL}`}>
                         <div className="space-y-1">
                           <p
                             className={clsx(
@@ -238,7 +247,7 @@ export default async function SupplierProjectsPage() {
                           </p>
                         </div>
                       </td>
-                      <td className="hidden px-5 py-4 align-middle text-right md:table-cell">
+                      <td className={`hidden md:table-cell ${PORTAL_CELL_RIGHT}`}>
                         <Link
                           href={`/supplier/quotes/${project.id}`}
                           className={clsx(

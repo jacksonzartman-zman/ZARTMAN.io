@@ -3,6 +3,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import {
+  PORTAL_ACTION_HINT,
+  PORTAL_DIVIDER,
+  PORTAL_HEADER_ROW,
+  PORTAL_META,
+  PORTAL_ROW,
+  PORTAL_TITLE,
+} from "@/app/(portals)/components/portalTableRhythm";
+
 type RfqStatusTone = "slate" | "blue" | "emerald" | "amber" | "muted";
 
 type CustomerQuoteRow = {
@@ -102,7 +111,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
 
   return (
     <div className="overflow-hidden">
-      <div className="border-b border-slate-800/50 px-6 py-3">
+      <div className={`${PORTAL_HEADER_ROW} px-6 py-3`}>
         <div className="grid grid-cols-1 gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:grid-cols-[minmax(0,1fr)_10rem_7rem_7rem] md:items-center">
           <div>RFQ</div>
           <div className="hidden md:block">Status</div>
@@ -110,7 +119,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
           <div className="hidden md:block text-right">Action</div>
         </div>
       </div>
-      <ul className="divide-y divide-slate-800/40">
+      <ul className={PORTAL_DIVIDER}>
         {rows.map((row) => {
           const hasNewOffers = row.status === "Offers ready" && !seenIds.has(row.id);
           const title =
@@ -121,8 +130,8 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
             <li
               key={row.id}
               className={clsx(
-                "relative transition-colors motion-reduce:transition-none",
-                "hover:bg-slate-900/15",
+                "relative",
+                PORTAL_ROW,
               )}
             >
               <Link
@@ -142,7 +151,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 ) : null}
                 <div className="min-w-0">
                   <p
-                    className="min-w-0 truncate text-[15px] font-semibold leading-snug text-slate-100"
+                    className={clsx("min-w-0 truncate text-[15px]", PORTAL_TITLE)}
                     title={title}
                   >
                     {title}
@@ -152,7 +161,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                       {row.status}
                     </span>
                   </div>
-                  <p className="mt-2 text-xs text-slate-500 whitespace-nowrap">
+                  <p className={clsx(PORTAL_META, "whitespace-nowrap")}>
                     <span className="tabular-nums">RFQ {formatRfqId(row.id)}</span>
                     <span className="px-2 text-slate-700" aria-hidden>
                       ·
@@ -162,7 +171,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                     </span>
                   </p>
                   <div className="mt-3 flex justify-end md:hidden">
-                    <span className="text-xs font-semibold text-slate-300 whitespace-nowrap">
+                    <span className={PORTAL_ACTION_HINT}>
                       View RFQ →
                     </span>
                   </div>
@@ -188,7 +197,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 <div className="hidden md:flex md:items-center md:justify-end">
                   <span
                     className={clsx(
-                      "text-xs font-semibold text-slate-300 whitespace-nowrap",
+                      PORTAL_ACTION_HINT,
                       "transition-colors motion-reduce:transition-none",
                       "group-hover:text-white group-focus-visible:text-white",
                     )}

@@ -10,6 +10,13 @@ import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requi
 import { loadCustomerInbox } from "@/server/messages/inbox";
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import {
+  PORTAL_ACTION_HINT,
+  PORTAL_DIVIDER,
+  PORTAL_META,
+  PORTAL_ROW,
+  PORTAL_TITLE,
+} from "@/app/(portals)/components/portalTableRhythm";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +66,7 @@ export default async function CustomerMessagesPage() {
           </div>
         ) : (
           <div className="overflow-hidden">
-            <div className="divide-y divide-slate-800/40">
+            <div className={PORTAL_DIVIDER}>
               {rows.map((row) => {
                 const threadLabel = resolveThreadStatusLabel("customer", row.needsReplyFrom);
                 const threadPill = statusPillClasses(threadLabel);
@@ -75,12 +82,15 @@ export default async function CustomerMessagesPage() {
                 return (
                   <div
                     key={row.quoteId}
-                    className="flex flex-col gap-3 px-6 py-4 hover:bg-slate-900/20 md:h-16 md:flex-row md:items-center md:gap-6 md:py-0"
+                    className={[
+                      "flex flex-col gap-3 px-6 py-4 md:h-16 md:flex-row md:items-center md:gap-6 md:py-0",
+                      PORTAL_ROW,
+                    ].join(" ")}
                   >
                     <div className="min-w-0 flex-1">
                       <Link
                         href={href}
-                        className="block min-w-0 truncate text-sm font-semibold leading-tight text-slate-100 underline-offset-4 hover:underline"
+                        className={["block min-w-0 truncate underline-offset-4 hover:underline", PORTAL_TITLE].join(" ")}
                       >
                         {row.rfqLabel}
                       </Link>

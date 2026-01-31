@@ -9,6 +9,11 @@ import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { SupplierInboxRow } from "./SupplierInboxTable";
+import {
+  PORTAL_ROW,
+  PORTAL_TH,
+  PORTAL_TH_RIGHT,
+} from "@/app/(portals)/components/portalTableRhythm";
 
 type NewRfqsTableProps = {
   rows: SupplierInboxRow[];
@@ -104,22 +109,22 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
         tableClassName="table-fixed"
         head={
           <tr>
-            <th className="w-auto px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className={`w-auto ${PORTAL_TH}`}>
               Files
             </th>
-            <th className="w-[12rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className={`w-[12rem] ${PORTAL_TH}`}>
               Process
             </th>
-            <th className="w-[6.5rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className={`w-[6.5rem] ${PORTAL_TH}`}>
               Qty
             </th>
-            <th className="w-[10.5rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className={`w-[10.5rem] ${PORTAL_TH}`}>
               Need-by
             </th>
-            <th className="w-[9rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className={`w-[9rem] ${PORTAL_TH}`}>
               Received
             </th>
-            <th className="w-[12.5rem] px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className={`w-[12.5rem] ${PORTAL_TH_RIGHT}`}>
               Action
             </th>
           </tr>
@@ -167,8 +172,8 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
 
               return (
                 <Fragment key={row.id}>
-                  <tr className="bg-transparent transition hover:bg-slate-900/20 motion-reduce:transition-none">
-                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                  <tr className={clsx("bg-transparent", PORTAL_ROW)}>
+                    <td className={clsx(adminTableCellClass, "px-6 py-4")}>
                       <div className="flex items-start gap-3">
                         <button
                           type="button"
@@ -209,7 +214,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     <td
                       className={clsx(
                         adminTableCellClass,
-                        "px-5 py-4 text-xs text-slate-400",
+                        "px-6 py-4 text-xs text-slate-400",
                       )}
                     >
                       <span
@@ -222,7 +227,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     <td
                       className={clsx(
                         adminTableCellClass,
-                        "px-5 py-4 text-xs text-slate-400",
+                        "px-6 py-4 text-xs text-slate-400",
                       )}
                     >
                       <span
@@ -235,7 +240,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     <td
                       className={clsx(
                         adminTableCellClass,
-                        "px-5 py-4 text-xs text-slate-400",
+                        "px-6 py-4 text-xs text-slate-400",
                       )}
                     >
                       {row.targetDate ? (
@@ -250,12 +255,12 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     <td
                       className={clsx(
                         adminTableCellClass,
-                        "px-5 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
+                        "px-6 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
                       )}
                     >
                       {receivedLabel}
                     </td>
-                    <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>
+                    <td className={clsx(adminTableCellClass, "px-6 py-4 text-right")}>
                       <div className="flex flex-col items-end gap-2">
                         <Link
                           href={href}
@@ -409,7 +414,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     <tr className="bg-transparent">
                       <td
                         colSpan={6}
-                        className={clsx(adminTableCellClass, "px-5 pb-5 pt-0")}
+                        className={clsx(adminTableCellClass, "px-6 pb-6 pt-0")}
                       >
                         <NewRfqPreviewPanel
                           id={previewId}
@@ -429,7 +434,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
             <tr className="bg-slate-950/40">
               <td
                 colSpan={6}
-                className={clsx(adminTableCellClass, "px-5 py-10 text-center text-slate-500")}
+                className={clsx(adminTableCellClass, "px-6 py-10 text-center text-slate-500")}
               >
                 No urgent RFQs right now.
               </td>
