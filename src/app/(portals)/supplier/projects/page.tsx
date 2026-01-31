@@ -204,13 +204,13 @@ export default async function SupplierProjectsPage() {
                       <td className="px-5 py-4 align-middle text-right">
                         <div className="flex flex-wrap justify-end gap-2">
                           <Link
-                            href={`/supplier/quotes/${project.id}?tab=activity`}
+                            href={`/supplier/quotes/${project.id}?tab=activity#timeline`}
                             className="inline-flex items-center text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
                           >
                             Activity
                           </Link>
                           <MessageLinkWithUnread
-                            href={`/supplier/quotes/${project.id}?tab=messages`}
+                            href={`/supplier/quotes/${project.id}?tab=messages#messages`}
                             unread={hasUnread}
                             className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
                           >

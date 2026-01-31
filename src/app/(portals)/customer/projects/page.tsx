@@ -351,13 +351,13 @@ export default async function CustomerProjectsPage({
                                 />
                               ) : null}
                               <Link
-                                href={`/customer/quotes/${project.id}?tab=activity`}
+                                href={`/customer/quotes/${project.id}?tab=activity#timeline`}
                                 className="inline-flex items-center text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
                               >
                                 Activity
                               </Link>
                               <MessageLinkWithUnread
-                                href={`/customer/quotes/${project.id}?tab=messages`}
+                                href={`/customer/quotes/${project.id}?tab=messages#messages`}
                                 unread={hasUnread}
                                 className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
                               >

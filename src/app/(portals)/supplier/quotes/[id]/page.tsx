@@ -137,6 +137,14 @@ export default async function SupplierQuoteDetailPage({
       <PortalNoticeCard
         title="Sign in with a supplier email"
         description="We couldn’t determine which supplier account you’re using. Try signing out and back in."
+        action={
+          <Link
+            href={`/login?next=${encodeURIComponent(`/supplier/quotes/${quoteId}`)}`}
+            className="inline-flex items-center rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-blue-400"
+          >
+            Go to login
+          </Link>
+        }
       />
     );
   }
@@ -147,6 +155,14 @@ export default async function SupplierQuoteDetailPage({
       <PortalNoticeCard
         title="Complete onboarding"
         description="Finish the supplier onboarding form before opening RFQs."
+        action={
+          <Link
+            href="/supplier/onboarding"
+            className="inline-flex items-center rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-blue-400"
+          >
+            Finish onboarding
+          </Link>
+        }
       />
     );
   }
@@ -176,6 +192,14 @@ export default async function SupplierQuoteDetailPage({
       <PortalNoticeCard
         title="Not invited to this RFQ"
         description="You can only open RFQs you’ve been invited to (or where you’ve submitted a quote). If you believe you should have access, contact the Zartman team."
+        action={
+          <Link
+            href="/supplier/quotes"
+            className="inline-flex items-center rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-blue-400"
+          >
+            Back to RFQs
+          </Link>
+        }
       />
     );
   }
@@ -193,6 +217,14 @@ export default async function SupplierQuoteDetailPage({
       <PortalNoticeCard
         title="RFQ not found"
         description="We couldn’t find that RFQ ID. Double-check the link or ping the Zartman team."
+        action={
+          <Link
+            href="/supplier/quotes"
+            className="inline-flex items-center rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-blue-400"
+          >
+            Back to RFQs
+          </Link>
+        }
       />
     );
   }
@@ -572,12 +604,20 @@ function SupplierQuoteWorkspace({
       : "Lead time pending";
   const headerTitle = `${formatQuoteId(quote.id)} · ${derived.customerName}`;
   const headerActions = (
-    <Link
-      href="/supplier"
-      className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
-    >
-      Back to inbox
-    </Link>
+    <div className="flex flex-wrap items-center gap-2">
+      <Link
+        href="/supplier/quotes"
+        className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+      >
+        Back to RFQs
+      </Link>
+      <Link
+        href="/supplier"
+        className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
+      >
+        Dashboard
+      </Link>
+    </div>
   );
   const supplierPrimaryAction = resolvePrimaryAction({
     role: "supplier",
@@ -1399,14 +1439,17 @@ function DetailItem({ label, value }: { label: string; value: ReactNode }) {
 function PortalNoticeCard({
   title,
   description,
+  action,
 }: {
   title: string;
   description: string;
+  action?: ReactNode;
 }) {
   return (
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
       <h1 className="text-xl font-semibold text-white">{title}</h1>
       <p className="mt-2 text-sm text-slate-400">{description}</p>
+      {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
     </section>
   );
 }
