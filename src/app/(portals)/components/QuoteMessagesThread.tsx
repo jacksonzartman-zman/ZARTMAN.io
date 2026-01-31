@@ -7,7 +7,7 @@
  * - Done: Sending state keeps perceived speed (no scary spinners)
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -116,10 +116,17 @@ export function QuoteMessagesThread({
 }: QuoteMessagesThreadProps) {
   const [hasMounted, setHasMounted] = useState(false);
   const realtimeMessages = useQuoteMessagesRealtime(quoteId, messages);
+  const [optimisticMessage, setOptimisticMessage] = useState<QuoteMessageRecord | null>(null);
   const sortedMessages = useMemo(
     () => sortMessages(realtimeMessages),
     [realtimeMessages],
   );
+  const messagesWithOptimistic = useMemo(() => {
+    if (!optimisticMessage) return sortedMessages;
+    // Always dedupe by id; keep optimistic as a single stable row across retries.
+    if (sortedMessages.some((m) => m.id === optimisticMessage.id)) return sortedMessages;
+    return sortMessages([...sortedMessages, optimisticMessage]);
+  }, [sortedMessages, optimisticMessage]);
   const composerEnabled = Boolean(postAction) && canPost;
   const [showChangeRequestBanner, setShowChangeRequestBanner] = useState(false);
   const bannerTimeoutRef = useRef<number | null>(null);
@@ -162,6 +169,26 @@ export function QuoteMessagesThread({
       body: JSON.stringify({ quoteId }),
     }).catch(() => null);
   }, [markRead, quoteId, currentUserId]);
+
+  useEffect(() => {
+    if (!optimisticMessage) return;
+    if (!currentUserId) return;
+    // Best-effort: if the real message arrives via realtime, clear the optimistic row.
+    // Matching is intentionally conservative to avoid clearing older identical messages.
+    const optimisticCreatedAt = Date.parse(optimisticMessage.created_at);
+    if (!Number.isFinite(optimisticCreatedAt)) return;
+    const matched = sortedMessages.some((m) => {
+      if (m.sender_id !== currentUserId) return false;
+      if ((m.body ?? "").trim() !== (optimisticMessage.body ?? "").trim()) return false;
+      const created = Date.parse(m.created_at);
+      if (!Number.isFinite(created)) return false;
+      // Only consider a small window around the optimistic send time.
+      return created >= optimisticCreatedAt - 5000 && created <= optimisticCreatedAt + 60_000;
+    });
+    if (matched) {
+      setOptimisticMessage(null);
+    }
+  }, [sortedMessages, optimisticMessage, currentUserId]);
 
   return (
     <section
@@ -212,7 +239,7 @@ export function QuoteMessagesThread({
 
       <QuoteMessageList
         quoteId={quoteId}
-        messages={sortedMessages}
+        messages={messagesWithOptimistic}
         currentUserId={currentUserId}
         viewerRole={viewerRole}
         emptyStateCopy={emptyStateCopy}
@@ -227,6 +254,8 @@ export function QuoteMessagesThread({
           disabledCopy={canPost ? null : disabledCopy}
           viewerRole={viewerRole}
           portalEmail={portalEmail}
+          currentUserId={currentUserId}
+          onOptimisticMessageChange={setOptimisticMessage}
         />
       ) : !canPost && disabledCopy ? (
         <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-3 text-xs text-slate-400">
@@ -328,6 +357,7 @@ function QuoteMessageList({
   return (
     <div className="min-w-0 max-h-[28rem] space-y-3 overflow-y-auto pr-1">
       {messages.map((message) => {
+        const optimisticMeta = readOptimisticMeta(message);
         const isCurrentUser =
           typeof currentUserId === "string" &&
           message.sender_id === currentUserId;
@@ -355,6 +385,7 @@ function QuoteMessageList({
               isChangeRequestSystemMessage
                 ? "border-l-4 border-l-emerald-400/50"
                 : null,
+              optimisticMeta ? "border-dashed" : null,
             )}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
@@ -394,6 +425,18 @@ function QuoteMessageList({
             <p className="break-anywhere mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
               {message.body}
             </p>
+            {optimisticMeta?.status ? (
+              <p
+                className={clsx(
+                  "mt-2 text-xs",
+                  optimisticMeta.status === "failed" ? "text-amber-200/90" : "text-slate-400",
+                )}
+                role={optimisticMeta.status === "failed" ? "status" : undefined}
+                aria-live={optimisticMeta.status === "failed" ? "polite" : undefined}
+              >
+                {optimisticMeta.status === "failed" ? "Not sent" : "Sending…"}
+              </p>
+            ) : null}
             {attachments.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {attachments.map((a, idx) => {
@@ -482,6 +525,8 @@ function QuoteMessageComposer({
   disabledCopy,
   viewerRole,
   portalEmail,
+  currentUserId,
+  onOptimisticMessageChange,
 }: {
   quoteId: string;
   postAction: (
@@ -492,6 +537,8 @@ function QuoteMessageComposer({
   disabledCopy?: string | null;
   viewerRole: QuoteMessagesThreadProps["viewerRole"];
   portalEmail: QuoteMessagesThreadProps["portalEmail"];
+  currentUserId: string | null;
+  onOptimisticMessageChange?: Dispatch<SetStateAction<QuoteMessageRecord | null>>;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -509,9 +556,11 @@ function QuoteMessageComposer({
     }
     setSendViaEmail(false);
     setSelectedAttachmentIds([]);
+    onOptimisticMessageChange?.(null);
   }, [state.ok, state.message]);
 
   const bodyError = state.fieldErrors?.body;
+  const showSendFailure = Boolean(!state.ok && state.error && !bodyError);
   const portalEmailVisible =
     Boolean(portalEmail) &&
     (viewerRole === "customer" || viewerRole === "supplier");
@@ -526,6 +575,20 @@ function QuoteMessageComposer({
   const maxLen = sendViaEmail ? 5000 : 2000;
   const selectedCount = selectedAttachmentIds.length;
 
+  useEffect(() => {
+    if (sendViaEmail) return;
+    if (!onOptimisticMessageChange) return;
+    if (!showSendFailure) return;
+    onOptimisticMessageChange((current) => {
+      const optimistic = readOptimisticMeta(current);
+      if (!optimistic) return current;
+      return {
+        ...current!,
+        metadata: { ...(current as any)?.metadata, status: "failed" },
+      };
+    });
+  }, [showSendFailure, sendViaEmail, onOptimisticMessageChange]);
+
   return (
     <div className="space-y-3 border-t border-slate-900/60 pt-4">
       <div>
@@ -538,17 +601,55 @@ function QuoteMessageComposer({
         ) : null}
       </div>
       <QuoteMessageSuggestionsRow quoteId={quoteId} />
-      {!state.ok && state.error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
-          {state.error}
-        </p>
+      {showSendFailure ? (
+        <ComposerSendFailureRow />
       ) : null}
       {state.ok && state.message ? (
         <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-100">
           {state.message}
         </p>
       ) : null}
-      <form ref={formRef} action={formAction} className="space-y-3">
+      <form
+        ref={formRef}
+        action={formAction}
+        className="space-y-3"
+        onSubmit={() => {
+          // Add/update an optimistic row for the message thread.
+          // This is UI-only: it never touches schema and avoids duplicates on retry
+          // by reusing the same optimistic id for the same draft body.
+          if (sendViaEmail) return;
+          const userId = typeof currentUserId === "string" ? currentUserId : "";
+          if (!userId) return;
+          const raw = textareaRef.current?.value ?? "";
+          const trimmed = raw.trim();
+          if (!trimmed) return;
+          onOptimisticMessageChange?.((current) => {
+            const existing = readOptimisticMeta(current) ? (current as QuoteMessageRecord) : null;
+            const reuseId = Boolean(existing && (existing.body ?? "").trim() === trimmed);
+            const id = reuseId ? existing!.id : makeOptimisticMessageId(quoteId);
+            const now = new Date().toISOString();
+            const roleRaw = typeof viewerRole === "string" ? viewerRole.trim().toLowerCase() : "";
+            const senderRole =
+              roleRaw === "supplier"
+                ? "supplier"
+                : roleRaw === "customer"
+                  ? "customer"
+                  : ("admin" as const);
+            return {
+              id,
+              quote_id: quoteId,
+              sender_id: userId,
+              sender_role: senderRole,
+              sender_name: null,
+              sender_email: null,
+              body: trimmed,
+              created_at: now,
+              updated_at: null,
+              metadata: { _optimistic: true, status: "sending" },
+            };
+          });
+        }}
+      >
         {portalEmailVisible ? (
           <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -582,6 +683,10 @@ function QuoteMessageComposer({
                     setSendViaEmail(next);
                     if (!next) {
                       setSelectedAttachmentIds([]);
+                    }
+                    // Email sends may not create an in-portal message; avoid showing optimistic thread rows.
+                    if (next) {
+                      onOptimisticMessageChange?.(null);
                     }
                   }}
                 />
@@ -681,6 +786,18 @@ function QuoteMessageComposer({
             maxLength={maxLen}
             placeholder="Share updates, blockers, or questions with the group..."
             className="w-full rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
+            onChange={() => {
+              // Clear "failed" status as soon as the user edits the draft.
+              onOptimisticMessageChange?.((current) => {
+                const optimistic = readOptimisticMeta(current);
+                if (!optimistic || optimistic.status !== "failed") return current;
+                return {
+                  ...current!,
+                  body: (textareaRef.current?.value ?? "").trim(),
+                  metadata: { ...(current as any)?.metadata, status: "sending" },
+                };
+              });
+            }}
           />
           {bodyError ? (
             <p className="text-sm text-red-300" role="alert">
@@ -688,6 +805,9 @@ function QuoteMessageComposer({
             </p>
           ) : null}
         </div>
+        {showSendFailure ? (
+          <ComposerRetryInline />
+        ) : null}
         <ComposerSubmitButton />
       </form>
     </div>
@@ -771,6 +891,37 @@ function ComposerSubmitButton() {
     >
       {pending ? "Sending..." : "Send message"}
     </button>
+  );
+}
+
+function ComposerSendFailureRow() {
+  return (
+    <p
+      className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-2.5 text-sm text-slate-200"
+      role="status"
+      aria-live="polite"
+    >
+      Couldn&apos;t send. Try again.
+    </p>
+  );
+}
+
+function ComposerRetryInline() {
+  const { pending } = useFormStatus();
+
+  // This component renders inside the <form>, so "Retry" can be a submit button
+  // that respects `pending` and doesn't introduce a second optimistic message.
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+      <span>Couldn&apos;t send.</span>
+      <button
+        type="submit"
+        disabled={pending}
+        className="font-semibold text-slate-200 underline underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        Retry
+      </button>
+    </div>
   );
 }
 
@@ -953,4 +1104,24 @@ function getRealtimeClient(): SupabaseClient | null {
     }
   }
   return cachedClient;
+}
+
+function makeOptimisticMessageId(quoteId: string): string {
+  const base = typeof quoteId === "string" ? quoteId.trim() : "";
+  const nonce =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `optimistic:${base || "quote"}:${nonce}`;
+}
+
+function readOptimisticMeta(
+  message: QuoteMessageRecord | null | undefined,
+): null | { status: "sending" | "failed" } {
+  const meta = (message as any)?.metadata;
+  if (!meta || typeof meta !== "object") return null;
+  if ((meta as any)?._optimistic !== true) return null;
+  const raw = (meta as any)?.status;
+  const status = raw === "failed" ? "failed" : "sending";
+  return { status };
 }
