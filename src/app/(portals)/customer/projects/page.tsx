@@ -2,7 +2,7 @@ import clsx from "clsx";
 import Link from "next/link";
 
 import PortalCard from "@/app/(portals)/PortalCard";
-import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import { PortalShell, PORTAL_SURFACE_CARD } from "@/app/(portals)/components/PortalShell";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import {
   formatRelativeTimeCompactFromTimestamp,
