@@ -105,7 +105,7 @@ export default async function SupplierProjectsPage() {
     >
       <PortalCard
         title="Awarded projects"
-        description="These are RFQs that have been awarded to your shop and are now tracked as projects."
+        header={false}
       >
         {projects.length === 0 ? (
           <EmptyStateCard

@@ -36,7 +36,7 @@ export default async function CustomerMessagesPage() {
       actions={
         <Link
           href="/customer"
-          className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+          className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline motion-reduce:transition-none"
         >
           Back to dashboard
         </Link>
@@ -44,7 +44,7 @@ export default async function CustomerMessagesPage() {
     >
       <PortalCard
         title="Messages"
-        description="One inbox for every RFQ thread—see what needs your attention and jump back into context."
+        header={false}
       >
         {rows.length === 0 ? (
           <EmptyStateCard

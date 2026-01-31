@@ -5,7 +5,7 @@ import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesList } from "@/server/customer/quotesList";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import PortalCard from "../../PortalCard";
-import { PortalShell, PORTAL_SURFACE_CARD_INTERACTIVE_QUIET } from "../../components/PortalShell";
+import { PortalShell } from "../../components/PortalShell";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { CustomerQuotesListClient } from "./CustomerQuotesListClient";
 import { primaryCtaClasses } from "@/lib/ctas";
@@ -180,94 +180,39 @@ export default async function CustomerQuotesPage({
       title="RFQs"
       subtitle="Your command center for intake: track status, review offers, and jump back into context."
       actions={
-        <Link href="/quote" className={`${primaryCtaClasses} text-xs font-semibold uppercase tracking-wide`}>
-          Upload new part
-        </Link>
+        <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+          <Link
+            href="/quote"
+            className={`${primaryCtaClasses} text-xs font-semibold uppercase tracking-wide`}
+          >
+            Upload new part
+          </Link>
+          <Link
+            href="/customer/projects"
+            className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline motion-reduce:transition-none"
+          >
+            Projects
+          </Link>
+          <Link
+            href="/customer/messages"
+            className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline motion-reduce:transition-none"
+          >
+            Messages
+          </Link>
+        </div>
       }
     >
-      <div className="grid grid-cols-12 gap-6 lg:gap-8">
-        <div className="col-span-12 lg:col-span-8 xl:col-span-9">
-          <PortalCard
-            title="RFQ queue"
-            description="A calm, scan-friendly feed of your submissions—title, status, and latest update at a glance."
-            className="p-7"
-          >
-            {sortedQuotes.length === 0 ? (
-              <EmptyStateCard
-                title="No RFQs yet"
-                description="Upload a part to start a search. We’ll keep status, offers, and updates here."
-                action={{ label: "Upload new part", href: "/quote" }}
-              />
-            ) : (
-              <CustomerQuotesListClient rows={rows} />
-            )}
-          </PortalCard>
-        </div>
-
-        <aside className="col-span-12 space-y-4 lg:col-span-4 xl:col-span-3">
-          <PortalCard
-            title="Shortcuts"
-            description="Secondary surfaces—quick jumps back into execution and conversations."
-            className={clsx("p-5", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
-          >
-            <ul className="space-y-3 text-sm">
-              <li className="flex items-center justify-between gap-3">
-                <Link
-                  href="/customer/projects"
-                  className="font-semibold text-slate-200 underline-offset-4 transition hover:text-white hover:underline motion-reduce:transition-none"
-                >
-                  Projects
-                </Link>
-                <span className="text-xs text-slate-500">Execution stage</span>
-              </li>
-              <li className="flex items-center justify-between gap-3">
-                <Link
-                  href="/customer/messages"
-                  className="font-semibold text-slate-200 underline-offset-4 transition hover:text-white hover:underline motion-reduce:transition-none"
-                >
-                  Messages
-                </Link>
-                <span className="text-xs text-slate-500">Inbox</span>
-              </li>
-            </ul>
-          </PortalCard>
-
-          <PortalCard
-            title="How to scan this list"
-            description="Primary title, status, then meta—kept intentionally quiet."
-            className={clsx("p-5", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
-          >
-            <ul className="list-disc space-y-2 pl-5 text-sm text-slate-300">
-              <li>
-                <span className="font-semibold text-slate-100">Title</span>{" "}
-                is the primary file name (or the RFQ label).
-              </li>
-              <li>
-                <span className="font-semibold text-slate-100">Status</span>{" "}
-                shows where the RFQ is in intake; “Offers ready” highlights new results.
-              </li>
-              <li>
-                <span className="font-semibold text-slate-100">Meta</span>{" "}
-                includes the RFQ id and last update time for quick triage.
-              </li>
-            </ul>
-          </PortalCard>
-
-          <PortalCard
-            title="Need to start a new RFQ?"
-            description="Upload CAD, drawings, or a ZIP—then we’ll route it for offers."
-            className={clsx("p-5", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
-            action={
-              <Link
-                href="/quote"
-                className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-700 hover:bg-slate-950/45 hover:text-white motion-reduce:transition-none"
-              >
-                Upload
-              </Link>
-            }
+      <PortalCard title="RFQs" header={false} className="p-7">
+        {sortedQuotes.length === 0 ? (
+          <EmptyStateCard
+            title="No RFQs yet"
+            description="Upload a part to start a search. We’ll keep status, offers, and updates here."
+            action={{ label: "Upload new part", href: "/quote" }}
           />
-        </aside>
-      </div>
+        ) : (
+          <CustomerQuotesListClient rows={rows} />
+        )}
+      </PortalCard>
     </PortalShell>
   );
 }

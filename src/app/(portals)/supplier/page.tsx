@@ -34,7 +34,6 @@ import { buildSupplierInboxRows } from "./inboxRows";
 import { InvitedSupplierWelcomePanel } from "./InvitedSupplierWelcomePanel";
 import { SupplierOfferSentBanner } from "./SupplierOfferSentBanner";
 import { AwardedJobSuccessBanner } from "./AwardedJobSuccessBanner";
-import { SupplierFunnelBanner } from "./components/SupplierFunnelBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -247,9 +246,9 @@ async function SupplierDashboardPage({
       <div className="grid gap-7 lg:grid-cols-12 lg:items-start lg:gap-8">
         <div className="space-y-7 lg:col-span-9">
           <PortalCard
-            title="Step 1 · New RFQs"
+            title="New RFQs"
             description="RFQs waiting for your offer."
-            className="p-7 sm:p-8 ring-1 ring-blue-400/10 border-slate-700/70 bg-slate-950/60 shadow-[0_16px_44px_rgba(2,6,23,0.4)] hover:border-slate-600/75 hover:bg-slate-950/65 hover:shadow-[0_18px_52px_rgba(2,6,23,0.48)]"
+            className="p-7 sm:p-8"
             action={
               supplierExists ? (
                 <Link
@@ -288,19 +287,12 @@ async function SupplierDashboardPage({
               />
             )}
             {matchesUnavailable ? <DataFallbackNotice className="mt-3" /> : null}
-
-            <div className="mt-6 border-t border-slate-800/60 pt-5">
-              <SupplierFunnelBanner
-                activeStep={1}
-                className="border-slate-900/55 bg-black/10"
-              />
-            </div>
           </PortalCard>
         </div>
 
         <div className="space-y-5 lg:col-span-3">
           <PortalCard
-            title="Step 3 · Active projects"
+            title="Active projects"
             description="Awarded work in progress."
             className={`${PORTAL_SURFACE_CARD_INTERACTIVE_QUIET} p-4`}
             action={

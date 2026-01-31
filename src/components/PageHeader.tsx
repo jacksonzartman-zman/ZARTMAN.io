@@ -23,12 +23,12 @@ export function PageHeader({
   return (
     <section
       className={clsx(
-        "rounded-3xl border border-slate-900/70 bg-slate-950/70 p-6 sm:p-7 shadow-[0_18px_40px_rgba(2,6,23,0.6)]",
+        "rounded-3xl p-5 sm:p-6",
         className,
       )}
     >
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-3">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2">
           {eyebrow ? (
             <p
               className={clsx(
@@ -39,22 +39,24 @@ export function PageHeader({
               {eyebrow}
             </p>
           ) : null}
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold text-white heading-tight sm:text-4xl">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl font-semibold text-white heading-tight sm:text-3xl">
               {title}
             </h1>
             {description ? (
-              <p className="text-sm text-slate-400 heading-snug">{description}</p>
+              <p className="max-w-[72ch] truncate text-sm text-slate-400 heading-snug">
+                {description}
+              </p>
             ) : null}
           </div>
         </div>
         {actions ? (
-          <div className="flex shrink-0 flex-col gap-3 text-sm lg:items-end lg:text-right">
+          <div className="flex shrink-0 flex-col gap-2 text-sm lg:items-end lg:text-right">
             {actions}
           </div>
         ) : null}
       </div>
-      {children ? <div className="mt-6 space-y-4">{children}</div> : null}
+      {children ? <div className="mt-4 space-y-4">{children}</div> : null}
     </section>
   );
 }

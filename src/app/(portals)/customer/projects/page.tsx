@@ -212,7 +212,7 @@ export default async function CustomerProjectsPage({
     >
       <PortalCard
         title="Projects"
-        description="Execution stage: kickoff progress, production status, and delivery history. Each project originates from an RFQ."
+        header={false}
       >
         {projects.length === 0 ? (
           <EmptyStateCard
