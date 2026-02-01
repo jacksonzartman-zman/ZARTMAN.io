@@ -31,6 +31,7 @@ export type AwardActorRole = "customer" | "admin";
 
 export type AwardFailureReason =
   | "invalid_input"
+  | "no_offers"
   | "quote_lookup_failed"
   | "quote_not_found"
   | "access_denied"
@@ -137,6 +138,20 @@ export async function performAwardFlow(
     return { ok: false, reason: "quote_not_found", error: "Quote not found." };
   }
 
+  const hasAnyBids = await quoteHasAnySupplierBids(quoteId);
+  if (!hasAnyBids) {
+    console.warn("[award] validation failed", {
+      ...logContext,
+      reason: "no_offers",
+    });
+    return {
+      ok: false,
+      reason: "no_offers",
+      error:
+        "No offers have been submitted for this RFQ yet. Wait for at least one offer before selecting a winner.",
+    };
+  }
+
   // Defensive invariant: older databases may have quotes marked as won without
   // having quotes.awarded_* populated (legacy award RPC). We only attempt a
   // best-effort backfill after validating the actor can access this quote.
@@ -192,7 +207,7 @@ export async function performAwardFlow(
       });
     }
 
-    revalidateAwardedPaths(quoteId);
+    revalidateQuoteAwardPaths(quoteId);
     return {
       ok: true,
       awardedBidId: bidId,
@@ -319,7 +334,7 @@ export async function performAwardFlow(
           });
         }
 
-        revalidateAwardedPaths(quoteId);
+        revalidateQuoteAwardPaths(quoteId);
 
         // Phase 19.3.14: best-effort supplier invite email after award backfill.
         void autoSendSupplierInviteAfterAward({
@@ -577,7 +592,7 @@ export async function finalizeAwardAfterRpc({
   });
 
   if (revalidate) {
-    revalidateAwardedPaths(normalizedQuoteId);
+    revalidateQuoteAwardPaths(normalizedQuoteId);
   }
 
   // Notifications should be best-effort but also reliable in serverless contexts:
@@ -1004,7 +1019,7 @@ async function ensureQuoteWonAndAwarded({
   return true;
 }
 
-function revalidateAwardedPaths(quoteId: string) {
+export function revalidateQuoteAwardPaths(quoteId: string) {
   const paths = [
     "/customer",
     "/customer/quotes",
@@ -1022,6 +1037,34 @@ function revalidateAwardedPaths(quoteId: string) {
   paths.forEach((path) => {
     revalidatePath(path);
   });
+}
+
+async function quoteHasAnySupplierBids(quoteId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseServer()
+      .from("supplier_bids")
+      .select("id")
+      .eq("quote_id", quoteId)
+      .limit(1);
+
+    if (error) {
+      console.error("[award] offer existence check failed", {
+        quoteId,
+        error: serializeActionError(error),
+      });
+      // Fail-soft: do not block award on telemetry/read failures.
+      return true;
+    }
+
+    return (data ?? []).length > 0;
+  } catch (error) {
+    console.error("[award] offer existence check crashed", {
+      quoteId,
+      error: serializeActionError(error),
+    });
+    // Fail-soft: do not block award on telemetry/read failures.
+    return true;
+  }
 }
 
 function normalizeId(value?: string | null): string {

@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import {
   AWARD_FEEDBACK_CONFIDENCE_OPTIONS,
   AWARD_FEEDBACK_MAX_NOTES_LENGTH,
@@ -32,9 +33,12 @@ export function AwardOutcomeCard({
   feedback,
   className,
 }: AwardOutcomeCardProps) {
+  const router = useRouter();
   const hasWinner = Boolean((awardedSupplierId ?? "").trim());
   const [showForm, setShowForm] = useState(!feedback && hasWinner);
   const [notes, setNotes] = useState("");
+  const [undoPending, setUndoPending] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
 
   const action = useMemo(
     () => submitAwardFeedbackAction.bind(null, quoteId),
@@ -68,16 +72,62 @@ export function AwardOutcomeCard({
             Capture why this supplier won (admin-only).
           </p>
         </div>
-        {hasWinner && !feedback ? (
-          <button
-            type="button"
-            onClick={() => setShowForm((v) => !v)}
-            className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-400 hover:text-emerald-100"
-          >
-            {showForm ? "Hide" : "Add feedback"}
-          </button>
-        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {hasWinner ? (
+            <button
+              type="button"
+              disabled={undoPending}
+              onClick={async () => {
+                if (undoPending) return;
+                const confirmed = window.confirm(
+                  "Undo award?\n\nThis clears awarded fields and resets the winner so you can re-award.\n\nThis action is admin-only.",
+                );
+                if (!confirmed) return;
+
+                setUndoPending(true);
+                setUndoError(null);
+                try {
+                  const res = await fetch(`/api/admin/quotes/${quoteId}/undo-award`, {
+                    method: "POST",
+                  });
+                  if (!res.ok) {
+                    setUndoError("Unable to undo award right now. Please try again.");
+                    return;
+                  }
+                  router.refresh();
+                } catch {
+                  setUndoError("Network error. Please try again.");
+                } finally {
+                  setUndoPending(false);
+                }
+              }}
+              className={clsx(
+                "rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-100 transition",
+                undoPending
+                  ? "cursor-not-allowed opacity-70"
+                  : "hover:bg-red-500/15 hover:text-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400",
+              )}
+            >
+              {undoPending ? "Undoing..." : "Undo award"}
+            </button>
+          ) : null}
+          {hasWinner && !feedback ? (
+            <button
+              type="button"
+              onClick={() => setShowForm((v) => !v)}
+              className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-400 hover:text-emerald-100"
+            >
+              {showForm ? "Hide" : "Add feedback"}
+            </button>
+          ) : null}
+        </div>
       </header>
+
+      {undoError ? (
+        <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-xs text-amber-200">
+          {undoError}
+        </p>
+      ) : null}
 
       {!hasWinner ? (
         <p className="mt-4 text-sm text-slate-400">No winner selected yet.</p>
