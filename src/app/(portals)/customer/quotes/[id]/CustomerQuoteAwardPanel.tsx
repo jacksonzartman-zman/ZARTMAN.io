@@ -65,6 +65,7 @@ export function CustomerQuoteAwardPanel({
 
   const resolvedWinnerId = state.selectedBidId ?? winningBidId ?? null;
   const selectionLocked = Boolean(resolvedWinnerId);
+  const bidsAvailable = bids.length > 0;
   const showDisableNotice = Boolean(disableReason) && (!canSubmit || selectionLocked);
   const winningBid =
     selectionLocked && resolvedWinnerId
@@ -207,19 +208,34 @@ export function CustomerQuoteAwardPanel({
         </p>
       ) : null}
 
+      {!selectionLocked && !bidsAvailable ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-4 text-sm text-slate-200">
+          <p className="font-semibold text-white">No offers yet</p>
+          <p className="mt-1 text-sm text-slate-400">
+            Once suppliers submit offers, they’ll appear here and you can select a winner.
+          </p>
+        </div>
+      ) : null}
+
       {showDisableNotice ? (
         <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-3 text-xs text-slate-400">
           {disableReason}
         </p>
       ) : null}
 
-      {selectionLocked && winnerSupplierName ? (
+      {selectionLocked ? (
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
           <p className="flex items-start gap-2">
             <InlineStatusIcon tone="success" className="mt-0.5" />
             <span>
-              Selection confirmed:{" "}
-              <span className="font-semibold text-white">{winnerSupplierName}</span>
+              {winnerSupplierName ? (
+                <>
+                  Selection confirmed:{" "}
+                  <span className="font-semibold text-white">{winnerSupplierName}</span>
+                </>
+              ) : (
+                <>Selection confirmed.</>
+              )}
             </span>
           </p>
           <p className="mt-2 text-xs text-emerald-200">
@@ -336,7 +352,7 @@ export function CustomerQuoteAwardPanel({
             const statusLabel = formatBidStatusLabel(bid.status);
             const priceText = bid.priceDisplay ?? "Price pending";
             const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
-            const awardDisabled = !canSubmit || selectionLocked;
+            const awardDisabled = !canSubmit || selectionLocked || !bidsAvailable;
             const isBestPrice =
               comparisonLeaders.bestPrice !== null &&
               isFiniteNonNegativeNumber(bid.priceValue) &&
@@ -463,7 +479,7 @@ export function CustomerQuoteAwardPanel({
                   const statusLabel = formatBidStatusLabel(bid.status);
                   const priceText = bid.priceDisplay ?? "Price pending";
                   const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
-                  const awardDisabled = !canSubmit || selectionLocked;
+                  const awardDisabled = !canSubmit || selectionLocked || !bidsAvailable;
                   const isBestPrice =
                     comparisonLeaders.bestPrice !== null &&
                     isFiniteNonNegativeNumber(bid.priceValue) &&

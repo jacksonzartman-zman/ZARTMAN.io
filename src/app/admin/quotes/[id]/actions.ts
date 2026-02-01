@@ -2381,6 +2381,8 @@ function mapAdminAwardError(
   reason?: AwardFailureReason,
 ): string {
   switch (reason) {
+    case "no_offers":
+      return "No offers have been submitted for this RFQ yet.";
     case "invalid_input":
     case "bid_not_found":
     case "bid_ineligible":
