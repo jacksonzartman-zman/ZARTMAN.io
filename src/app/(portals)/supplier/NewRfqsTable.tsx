@@ -169,6 +169,13 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                   ? [row.primaryFileName]
                   : [];
               const previewId = `new-rfq-preview-${row.id}`;
+              const quotingClosed = !row.isOpen || row.hasWinner;
+              const primaryCtaLabel = quotingClosed ? "Open RFQ" : "Submit offer";
+              const helperLabel = quotingClosed
+                ? row.hasWinner
+                  ? "Closed (awarded)"
+                  : "Closed"
+                : null;
 
               return (
                 <Fragment key={row.id}>
@@ -267,12 +274,20 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                           className={clsx(
                             primaryInfoCtaClasses,
                             ctaSizeClasses.sm,
-                            "inline-flex min-w-[10.5rem] justify-center px-5 py-2 text-sm shadow-[0_10px_22px_rgba(37,99,235,0.22)] hover:shadow-[0_12px_26px_rgba(37,99,235,0.28)] motion-reduce:transition-none",
+                            "inline-flex min-w-[10.5rem] justify-center px-5 py-2 text-sm motion-reduce:transition-none",
+                            quotingClosed
+                              ? "shadow-none hover:shadow-none"
+                              : "shadow-[0_10px_22px_rgba(37,99,235,0.22)] hover:shadow-[0_12px_26px_rgba(37,99,235,0.28)]",
                             pending ? "pointer-events-none opacity-60" : "",
                           )}
                         >
-                          Submit offer
+                          {primaryCtaLabel}
                         </Link>
+                        {helperLabel ? (
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            {helperLabel}
+                          </p>
+                        ) : null}
                         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide">
                           <button
                             type="button"

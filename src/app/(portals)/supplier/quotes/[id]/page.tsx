@@ -624,24 +624,28 @@ function SupplierQuoteWorkspace({
       </Link>
     </div>
   );
-  const supplierPrimaryAction = resolvePrimaryAction({
-    role: "supplier",
-    quote: {
-      id: quote.id,
-      status: quote.status ?? null,
-      awarded_supplier_id: quote.awarded_supplier_id ?? null,
-      awarded_bid_id: quote.awarded_bid_id ?? null,
-      awarded_at: quote.awarded_at ?? null,
-      kickoff_completed_at:
-        (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ??
-        null,
-      primaryActionHints: {
-        canSubmitBid,
-        awardedToSupplier,
-        hasWinner: quoteHasWinner,
-      },
-    },
-  });
+  const supplierPrimaryAction = isWinningSupplier
+    ? hasProject
+      ? { label: "View project", href: "/supplier/projects", tone: "emerald" as const }
+      : { label: "Kickoff", href: "#kickoff", tone: "emerald" as const }
+    : resolvePrimaryAction({
+        role: "supplier",
+        quote: {
+          id: quote.id,
+          status: quote.status ?? null,
+          awarded_supplier_id: quote.awarded_supplier_id ?? null,
+          awarded_bid_id: quote.awarded_bid_id ?? null,
+          awarded_at: quote.awarded_at ?? null,
+          kickoff_completed_at:
+            (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ??
+            null,
+          primaryActionHints: {
+            canSubmitBid,
+            awardedToSupplier,
+            hasWinner: quoteHasWinner,
+          },
+        },
+      });
   const supplierWhatsNext = awardedToSupplier
     ? "Kickoff checklist is unlocked. Complete tasks and keep the thread updated."
     : canSubmitBid

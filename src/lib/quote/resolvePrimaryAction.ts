@@ -63,7 +63,7 @@ export function resolvePrimaryAction({
       return { label: "Submit bid", href: "#bid", tone: "blue" };
     }
     if (hints.awardedToSupplier) {
-      return { label: "View kickoff", href: "#kickoff", tone: "emerald" };
+      return { label: "Kickoff", href: "#kickoff", tone: "emerald" };
     }
     if (hasWinner || status === "lost" || status === "cancelled") {
       return { label: "Open messages", href: "#messages", tone: "slate" };

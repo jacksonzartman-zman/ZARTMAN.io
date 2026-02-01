@@ -157,6 +157,13 @@ export function CustomerQuoteJourneyHeaderAuto({
               scrollToIdWithHash("decision");
             },
           }
+        : nextStepTarget === "checkout"
+          ? {
+              label: "View kickoff",
+              onClick: () => {
+                scrollToIdWithHash("kickoff");
+              },
+            }
         : undefined;
 
   return (
