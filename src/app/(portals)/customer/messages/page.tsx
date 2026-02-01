@@ -8,7 +8,6 @@ import {
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { loadCustomerInbox } from "@/server/messages/inbox";
-import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { UnreadBadge } from "@/components/shared/primitives/UnreadBadge";
 import {
@@ -20,19 +19,6 @@ import {
 } from "@/app/(portals)/components/portalTableRhythm";
 
 export const dynamic = "force-dynamic";
-
-function statusPillClasses(label: string) {
-  if (label === "Needs your reply") {
-    return "border-amber-500/40 bg-amber-500/10 text-amber-100";
-  }
-  if (label === "Up to date") {
-    return "border-slate-800 bg-slate-950/50 text-slate-300";
-  }
-  if (label === "Status unknown") {
-    return "border-slate-800 bg-slate-950/50 text-slate-400";
-  }
-  return "border-slate-800 bg-slate-900/40 text-slate-200";
-}
 
 export default async function CustomerMessagesPage() {
   const user = await requireCustomerSessionOrRedirect("/customer/messages");
@@ -69,8 +55,6 @@ export default async function CustomerMessagesPage() {
           <div className="overflow-hidden">
             <div className={PORTAL_DIVIDER}>
               {rows.map((row) => {
-                const threadLabel = resolveThreadStatusLabel("customer", row.needsReplyFrom);
-                const threadPill = statusPillClasses(threadLabel);
                 const lastMessageAtLabel =
                   formatRelativeTimeCompactFromTimestamp(toTimestamp(row.lastMessageAt)) ?? "—";
                 const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
@@ -99,15 +83,11 @@ export default async function CustomerMessagesPage() {
                       <div className="mt-1 flex min-w-0 items-center gap-2 text-xs">
                         <span className="min-w-0 flex-1 truncate text-slate-300/70">{preview}</span>
                         <span className="flex shrink-0 flex-wrap items-center gap-2 text-[11px] text-slate-500 md:flex-nowrap md:whitespace-nowrap">
-                          <span
-                            className={[
-                              "inline-flex items-center rounded-full border px-2 py-0.5 font-semibold uppercase tracking-wide",
-                              "whitespace-nowrap",
-                              threadPill,
-                            ].join(" ")}
-                          >
-                            {threadLabel}
-                          </span>
+                          {row.needsReply ? (
+                            <span className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              Needs reply
+                            </span>
+                          ) : null}
                           <UnreadBadge count={unread} />
                         </span>
                         <span className="hidden shrink-0 items-center gap-2 whitespace-nowrap text-[11px] tabular-nums text-slate-500 md:flex">

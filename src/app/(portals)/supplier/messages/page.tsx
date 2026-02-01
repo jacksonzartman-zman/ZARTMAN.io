@@ -7,7 +7,6 @@ import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { requireUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { loadSupplierInbox } from "@/server/messages/inbox";
-import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 import { UnreadBadge } from "@/components/shared/primitives/UnreadBadge";
@@ -43,19 +42,6 @@ function kickoffPill(status: "not_started" | "in_progress" | "complete" | "n/a")
     label: "Kickoff not started",
     className: "border-slate-800 bg-slate-950/50 text-slate-300",
   };
-}
-
-function statusPillClasses(label: string) {
-  if (label === "Needs your reply") {
-    return "border-amber-500/40 bg-amber-500/10 text-amber-100";
-  }
-  if (label === "Up to date") {
-    return "border-slate-800 bg-slate-950/50 text-slate-300";
-  }
-  if (label === "Status unknown") {
-    return "border-slate-800 bg-slate-950/50 text-slate-400";
-  }
-  return "border-slate-800 bg-slate-900/40 text-slate-200";
 }
 
 export default async function SupplierMessagesPage() {
@@ -138,8 +124,6 @@ export default async function SupplierMessagesPage() {
               </thead>
               <tbody className={PORTAL_DIVIDER}>
                 {rows.map((row) => {
-                  const threadLabel = resolveThreadStatusLabel("supplier", row.needsReplyFrom);
-                  const threadPill = statusPillClasses(threadLabel);
                   const kickoff = kickoffPill(row.kickoffStatus);
                   const lastMessageAtLabel =
                     formatRelativeTimeCompactFromTimestamp(toTimestamp(row.lastMessageAt)) ?? "—";
@@ -160,14 +144,11 @@ export default async function SupplierMessagesPage() {
                       </td>
                       <td className={PORTAL_CELL}>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={clsx(
-                              "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
-                              threadPill,
-                            )}
-                          >
-                            {threadLabel}
-                          </span>
+                          {row.needsReply ? (
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              Needs reply
+                            </span>
+                          ) : null}
                           <UnreadBadge count={unread} />
                         </div>
                       </td>
