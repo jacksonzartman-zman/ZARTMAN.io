@@ -96,7 +96,7 @@ export default async function SupplierMessagesPage() {
       actions={
         <Link
           href="/supplier"
-          className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+          className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white motion-reduce:transition-none"
         >
           Back to dashboard
         </Link>
@@ -116,22 +116,22 @@ export default async function SupplierMessagesPage() {
           />
         ) : (
           <div className="-mx-6 overflow-hidden border-t border-slate-800/40">
-            <table className="min-w-full text-sm">
+            <table className="min-w-full table-fixed text-sm">
               <thead className="bg-transparent">
                 <tr>
-                  <th className={PORTAL_TH}>
+                  <th className={clsx(PORTAL_TH, "w-[14rem]")}>
                     RFQ
                   </th>
-                  <th className={PORTAL_TH}>
+                  <th className={clsx(PORTAL_TH, "w-[14rem]")}>
                     Thread
                   </th>
-                  <th className={PORTAL_TH}>
+                  <th className={clsx(PORTAL_TH, "w-[16rem]")}>
                     Status
                   </th>
                   <th className={PORTAL_TH}>
                     Last message
                   </th>
-                  <th className={PORTAL_TH_RIGHT}>
+                  <th className={clsx(PORTAL_TH_RIGHT, "w-[12rem]")}>
                     Action
                   </th>
                 </tr>
@@ -187,8 +187,10 @@ export default async function SupplierMessagesPage() {
                         </div>
                       </td>
                       <td className={PORTAL_CELL}>
-                        <div className="space-y-1">
-                          <p className="text-xs text-slate-200">{row.lastMessagePreview}</p>
+                        <div className="min-w-0 space-y-1">
+                          <p className="truncate text-xs text-slate-200" title={row.lastMessagePreview}>
+                            {row.lastMessagePreview}
+                          </p>
                           <p className="text-[11px] uppercase tracking-wide text-slate-600">
                             {lastMessageAtLabel}
                           </p>

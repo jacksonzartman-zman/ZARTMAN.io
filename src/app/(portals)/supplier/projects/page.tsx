@@ -130,19 +130,19 @@ export default async function SupplierProjectsPage() {
           />
         ) : (
           <div className="overflow-hidden">
-            <table className="min-w-full text-sm">
+            <table className="min-w-full table-fixed text-sm">
               <thead className="bg-transparent">
                 <tr>
                   <th className={PORTAL_TH}>
                     Project
                   </th>
-                  <th className={`hidden md:table-cell ${PORTAL_TH}`}>
+                  <th className={`hidden md:table-cell w-[12rem] ${PORTAL_TH}`}>
                     Kickoff
                   </th>
-                  <th className={`hidden lg:table-cell ${PORTAL_TH}`}>
+                  <th className={`hidden lg:table-cell w-[22rem] ${PORTAL_TH}`}>
                     Last message
                   </th>
-                  <th className={`hidden md:table-cell ${PORTAL_TH_RIGHT}`}>
+                  <th className={`hidden md:table-cell w-[12rem] ${PORTAL_TH_RIGHT}`}>
                     Open
                   </th>
                 </tr>

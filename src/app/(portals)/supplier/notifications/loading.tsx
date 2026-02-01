@@ -1,16 +1,22 @@
+import clsx from "clsx";
+
+import { PORTAL_SURFACE_CARD } from "@/app/(portals)/components/portalSurfaceTokens";
+
+const PORTAL_SKELETON_PULSE = "motion-safe:animate-pulse motion-reduce:animate-none";
+
 export default function Loading() {
   return (
     <div className="space-y-5">
-      <div className="h-20 animate-pulse rounded-2xl border border-slate-900/60 bg-slate-800/20" />
+      <div className={clsx(PORTAL_SURFACE_CARD, PORTAL_SKELETON_PULSE, "h-20")} />
       <div className="space-y-6">
         {Array.from({ length: 2 }).map((_, groupIndex) => (
           <section key={`group-${groupIndex}`} className="space-y-3">
-            <div className="h-3 w-28 animate-pulse rounded bg-slate-800/25" />
+            <div className={clsx("h-3 w-28 rounded bg-slate-800/25", PORTAL_SKELETON_PULSE)} />
             <ul className="space-y-2">
               {Array.from({ length: 4 }).map((_, itemIndex) => (
                 <li
                   key={`item-${groupIndex}-${itemIndex}`}
-                  className="animate-pulse rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4"
+                  className={clsx(PORTAL_SURFACE_CARD, PORTAL_SKELETON_PULSE, "p-4")}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="h-5 w-24 rounded-full bg-slate-800/20" />

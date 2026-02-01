@@ -18,6 +18,7 @@ import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
 import { StatusPill } from "@/components/shared/primitives/StatusPill";
 import { TagPill } from "@/components/shared/primitives/TagPill";
 import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { PORTAL_SURFACE_CARD } from "@/app/(portals)/components/portalSurfaceTokens";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -320,7 +321,7 @@ export function CustomerQuotePartPanel({
                       type="button"
                       onClick={() => setSelectedIndex(index)}
                       className={clsx(
-                        "w-full rounded-xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70",
+                        "w-full rounded-xl border px-4 py-3 text-left transition motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70",
                         isSelected
                           ? "border-emerald-400/40 bg-emerald-400/5"
                           : "border-slate-900/60 bg-slate-950/15 hover:border-slate-800 hover:bg-slate-950/20",
@@ -358,15 +359,15 @@ export function CustomerQuotePartPanel({
 
 function CadViewerPanelLoading({ height }: { height: number }) {
   return (
-    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/60 p-4">
+    <section className={clsx(PORTAL_SURFACE_CARD, "p-4")}>
       <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
         CAD preview
       </p>
       <div
-        className="mt-3 flex animate-pulse items-center justify-center rounded-xl border border-dashed border-slate-800/80 bg-slate-950/70 px-6 text-center text-xs text-slate-400"
+        className="mt-3 flex motion-safe:animate-pulse motion-reduce:animate-none items-center justify-center rounded-xl border border-dashed border-slate-800/80 bg-slate-950/70 px-6 text-center text-xs text-slate-500"
         style={{ height }}
       >
-        Loading viewer…
+        Loading…
       </div>
     </section>
   );

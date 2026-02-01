@@ -71,21 +71,22 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
 
   return (
     <AdminTableShell
+      tableClassName="table-fixed"
       head={
         <tr>
-          <th className={PORTAL_TH}>
+          <th className={clsx(PORTAL_TH, "w-[14rem]")}>
             RFQ
           </th>
           <th className={PORTAL_TH}>
             Files &amp; value
           </th>
-          <th className={PORTAL_TH}>
+          <th className={clsx(PORTAL_TH, "w-[14rem]")}>
             Your offer
           </th>
-          <th className={PORTAL_TH}>
+          <th className={clsx(PORTAL_TH, "w-[10rem]")}>
             RFQ status
           </th>
-          <th className={PORTAL_TH_RIGHT}>
+          <th className={clsx(PORTAL_TH_RIGHT, "w-[12rem]")}>
             Action
           </th>
         </tr>

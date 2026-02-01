@@ -1,7 +1,13 @@
+import clsx from "clsx";
+
+import { PORTAL_SURFACE_CARD } from "@/app/(portals)/components/portalSurfaceTokens";
+
+const PORTAL_SKELETON_PULSE = "motion-safe:animate-pulse motion-reduce:animate-none";
+
 function SkeletonBlock({ className }: { className: string }) {
   return (
     <div
-      className={`animate-pulse rounded-2xl border border-slate-900/60 bg-slate-800/20 ${className}`}
+      className={clsx(PORTAL_SURFACE_CARD, PORTAL_SKELETON_PULSE, className)}
     />
   );
 }
@@ -18,15 +24,17 @@ export default function CustomerDashboardLoading() {
       {[0, 1, 2].map((key) => (
         <section
           key={`card-${key}`}
-          className="rounded-2xl border border-slate-900/60 bg-slate-950/60 p-6"
+          className={clsx(PORTAL_SURFACE_CARD, "p-6")}
         >
-          <div className="h-4 w-36 animate-pulse rounded bg-slate-800/30" />
-          <div className="mt-2 h-3 w-64 animate-pulse rounded bg-slate-800/20" />
+          <div className={clsx("h-4 w-36 rounded bg-slate-800/30", PORTAL_SKELETON_PULSE)} />
+          <div
+            className={clsx("mt-2 h-3 w-64 rounded bg-slate-800/20", PORTAL_SKELETON_PULSE)}
+          />
           <div className="mt-5 space-y-2">
             {[0, 1, 2].map((line) => (
               <div
                 key={`line-${line}`}
-                className="h-4 w-full animate-pulse rounded bg-slate-800/20"
+                className={clsx("h-4 w-full rounded bg-slate-800/20", PORTAL_SKELETON_PULSE)}
               />
             ))}
           </div>

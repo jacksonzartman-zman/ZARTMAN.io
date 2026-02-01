@@ -26,6 +26,12 @@
     transition: outline-color 200ms ease, box-shadow 200ms ease,
       background-color 200ms ease;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-mt-24:target {
+      transition: none;
+    }
+  }
 }
 
 /* ---------- Components layer: reusable shells ---------- */

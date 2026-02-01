@@ -360,13 +360,13 @@ export default async function SupplierQuotesPage({
         <div className="flex flex-wrap gap-3">
           <Link
             href="/supplier"
-            className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+            className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white motion-reduce:transition-none"
           >
             Back to dashboard
           </Link>
           <Link
             href="/supplier/messages"
-            className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
+            className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white motion-reduce:transition-none"
           >
             Messages
           </Link>
@@ -385,7 +385,7 @@ export default async function SupplierQuotesPage({
               <select
                 name="status"
                 defaultValue={statusFilter}
-                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400 motion-reduce:transition-none"
               >
                 <option value="">All</option>
                 <option value="open">Open</option>
@@ -398,7 +398,7 @@ export default async function SupplierQuotesPage({
               <select
                 name="kickoff"
                 defaultValue={kickoffFilter}
-                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400 motion-reduce:transition-none"
               >
                 <option value="">All</option>
                 <option value="not_started">Not started</option>
@@ -411,7 +411,7 @@ export default async function SupplierQuotesPage({
               <select
                 name="messages"
                 defaultValue={messagesFilter}
-                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400 motion-reduce:transition-none"
               >
                 <option value="">All</option>
                 <option value="needs_reply">Needs reply</option>
@@ -424,7 +424,7 @@ export default async function SupplierQuotesPage({
               <select
                 name="partsCoverage"
                 defaultValue={partsCoverageFilter}
-                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400 motion-reduce:transition-none"
               >
                 <option value="">All</option>
                 <option value="needs_attention">Needs attention</option>
@@ -437,7 +437,7 @@ export default async function SupplierQuotesPage({
               <select
                 name="rfqQuality"
                 defaultValue={rfqQualityFilter}
-                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400 motion-reduce:transition-none"
               >
                 <option value="">All</option>
                 <option value="high">High (85+)</option>
@@ -448,7 +448,7 @@ export default async function SupplierQuotesPage({
             </label>
             <button
               type="submit"
-              className="inline-flex items-center rounded-lg bg-blue-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-blue-400"
+              className="inline-flex items-center rounded-lg bg-blue-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-blue-400 motion-reduce:transition-none"
             >
               Apply
             </button>
