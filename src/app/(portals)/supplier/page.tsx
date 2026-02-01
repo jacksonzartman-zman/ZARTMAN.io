@@ -187,7 +187,10 @@ async function SupplierDashboardPage({
     capabilities: profile?.capabilities ?? [],
   });
   const newRfqs = supplierInboxRows.filter(
-    (row) => row.supplierBidState === "no_bid" && visibleQuoteIds.has(row.quoteId),
+    (row) =>
+      row.supplierBidState === "no_bid" &&
+      row.isOpen &&
+      visibleQuoteIds.has(row.quoteId),
   );
   const matchesUnavailable = supplierExists && !matchesResult.ok;
 

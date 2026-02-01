@@ -37,6 +37,13 @@ export type SupplierInboxRow = {
   priceLabel: string;
   createdAt: string | null;
   status: QuoteStatus;
+  /**
+   * Derived from existing quote columns (status + awarded_*).
+   * Used to suppress quoting CTAs after award/close.
+   */
+  isOpen: boolean;
+  hasWinner: boolean;
+  awardedAt: string | null;
   bidCount: number;
   lastBidAt: string | null;
   hasWinningBid: boolean;
@@ -136,7 +143,13 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
           lastBidLabel,
           targetDateLabel,
         });
-        const ctaLabel = getSupplierBidCtaLabel(row.supplierBidState);
+        const ctaLabel = getSupplierBidCtaLabel({
+          supplierBidState: row.supplierBidState,
+          isOpen: row.isOpen,
+          hasWinner: row.hasWinner,
+          hasWinningBid: row.hasWinningBid,
+        });
+        const showMutedRfqStatus = row.hasWinner && !row.hasWinningBid;
 
         return (
           <tr
@@ -204,7 +217,13 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               <p className="mt-2 text-xs text-slate-400">{bidStatusHint}</p>
             </td>
             <td className={clsx(adminTableCellClass, "px-6 py-4")}>
-              <QuoteStatusBadge status={row.status} size="sm" />
+              {showMutedRfqStatus ? (
+                <span className="inline-flex w-fit items-center rounded-full border border-slate-900/70 bg-slate-950/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  Closed
+                </span>
+              ) : (
+                <QuoteStatusBadge status={row.status} size="sm" />
+              )}
             </td>
             <td className={clsx(adminTableCellClass, "px-6 py-4 text-right")}>
               <Link
@@ -253,8 +272,39 @@ const BID_STATUS_META: Record<
   lost: { pillClass: "pill-warning" },
 };
 
-function getSupplierBidCtaLabel(state: SupplierBidSummaryState): string {
-  switch (state) {
+function getSupplierBidCtaLabel(state: SupplierBidSummaryState): string;
+function getSupplierBidCtaLabel(input: {
+  supplierBidState: SupplierBidSummaryState;
+  isOpen: boolean;
+  hasWinner: boolean;
+  hasWinningBid: boolean;
+}): string;
+function getSupplierBidCtaLabel(
+  arg:
+    | SupplierBidSummaryState
+    | {
+        supplierBidState: SupplierBidSummaryState;
+        isOpen: boolean;
+        hasWinner: boolean;
+        hasWinningBid: boolean;
+      },
+): string {
+  const input =
+    typeof arg === "string"
+      ? {
+          supplierBidState: arg,
+          isOpen: true,
+          hasWinner: false,
+          hasWinningBid: false,
+        }
+      : arg;
+
+  // If the RFQ is closed (including by award), never prompt “quote”.
+  if (!input.isOpen || input.hasWinner) {
+    return input.hasWinningBid ? "Open workspace" : "Open RFQ";
+  }
+
+  switch (input.supplierBidState) {
     case "no_bid":
       return "Review & quote";
     case "won":
@@ -273,9 +323,14 @@ function resolveBidStatusHint({
   lastBidLabel: string;
   targetDateLabel: string | null;
 }): string {
+  if (!row.isOpen && !row.hasWinningBid && row.hasWinner) {
+    return "RFQ closed — awarded to another supplier.";
+  }
   switch (row.supplierBidState) {
     case "no_bid":
-      return "RFQ assigned—share a quote to stay in the rotation.";
+      return row.isOpen
+        ? "RFQ assigned—share a quote to stay in the rotation."
+        : "RFQ is closed.";
     case "submitted":
       return lastBidLabel;
     case "won":

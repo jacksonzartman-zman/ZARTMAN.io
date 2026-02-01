@@ -1,5 +1,5 @@
 import { toTimestamp } from "@/lib/relativeTime";
-import { normalizeQuoteStatus } from "@/server/quotes/status";
+import { isOpenQuoteStatus, normalizeQuoteStatus } from "@/server/quotes/status";
 import {
   buildCapabilityProfile,
   deriveSupplierMatchInsight,
@@ -83,6 +83,18 @@ export function buildSupplierInboxRows({
       lastBidAt,
       targetDate,
     });
+    const status = normalizeQuoteStatus(quote.status);
+    const quoteAwardedAt =
+      typeof quote.awarded_at === "string" && quote.awarded_at.trim()
+        ? quote.awarded_at.trim()
+        : null;
+    const hasWinnerFromQuote =
+      Boolean(quoteAwardedAt) ||
+      (typeof quote.awarded_bid_id === "string" && Boolean(quote.awarded_bid_id.trim())) ||
+      (typeof quote.awarded_supplier_id === "string" &&
+        Boolean(quote.awarded_supplier_id.trim())) ||
+      status === "won";
+    const isOpen = isOpenQuoteStatus(status) && !hasWinnerFromQuote;
 
     const matchInsight = capabilityProfile
       ? deriveSupplierMatchInsight({
@@ -106,7 +118,10 @@ export function buildSupplierInboxRows({
       fileCount: resolveQuoteFileCount(quote, fileNames.length),
       priceLabel: formatCurrencyValue(quote.price, quote.currency),
       createdAt,
-      status: normalizeQuoteStatus(quote.status),
+      status,
+      isOpen,
+      hasWinner: hasWinnerFromQuote,
+      awardedAt: quoteAwardedAt,
       bidCount: aggregate?.bidCount ?? 0,
       lastBidAt,
       hasWinningBid: aggregate?.hasWinningBid ?? false,
