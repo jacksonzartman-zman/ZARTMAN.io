@@ -172,6 +172,27 @@ export async function performAwardFlow(
         error: serializeActionError(error),
       });
     }
+
+    // Phase 18.1.3: ensure the kickoff/project surface is activated even for
+    // idempotent award calls (e.g. legacy awards missing quote_projects rows).
+    try {
+      const supplierIdForProject =
+        normalizeId(quote.awarded_supplier_id ?? null) ||
+        normalizeId((await loadBidForAward(bidId))?.supplier_id ?? null);
+      if (supplierIdForProject) {
+        await ensureQuoteProjectForWinner({
+          quoteId,
+          winningSupplierId: supplierIdForProject,
+        });
+      }
+    } catch (error) {
+      console.warn("[award] project ensure failed (no-op award)", {
+        ...logContext,
+        error: serializeActionError(error),
+      });
+    }
+
+    revalidateAwardedPaths(quoteId);
     return {
       ok: true,
       awardedBidId: bidId,
@@ -281,6 +302,24 @@ export async function performAwardFlow(
             error: serializeActionError(error),
           });
         }
+
+        try {
+          const supplierIdForProject =
+            normalizeId(backfilled.awarded_supplier_id ?? null);
+          if (supplierIdForProject) {
+            await ensureQuoteProjectForWinner({
+              quoteId,
+              winningSupplierId: supplierIdForProject,
+            });
+          }
+        } catch (error) {
+          console.warn("[award] project ensure failed (invariant backfill)", {
+            ...logContext,
+            error: serializeActionError(error),
+          });
+        }
+
+        revalidateAwardedPaths(quoteId);
 
         // Phase 19.3.14: best-effort supplier invite email after award backfill.
         void autoSendSupplierInviteAfterAward({
@@ -969,12 +1008,14 @@ function revalidateAwardedPaths(quoteId: string) {
   const paths = [
     "/customer",
     "/customer/quotes",
+    "/customer/projects",
     `/customer/quotes/${quoteId}`,
     "/admin",
     "/admin/quotes",
     `/admin/quotes/${quoteId}`,
     "/supplier",
     "/supplier/quotes",
+    "/supplier/projects",
     `/supplier/quotes/${quoteId}`,
   ];
 
