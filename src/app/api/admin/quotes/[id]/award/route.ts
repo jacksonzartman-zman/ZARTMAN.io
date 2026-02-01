@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser, UnauthorizedError } from "@/server/auth";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { performAwardFlow } from "@/server/quotes/award";
+import { hasColumns } from "@/server/db/schemaContract";
 
 export async function POST(
   req: Request,
@@ -16,9 +17,12 @@ export async function POST(
     const admin = await requireAdminUser();
 
     const body = (await req.json().catch(() => null)) as
-      | { bidId?: unknown }
+      | { bidId?: unknown; awardNotes?: unknown }
       | null;
     const bidId = typeof body?.bidId === "string" ? body.bidId.trim() : "";
+    const awardNotesRaw =
+      typeof body?.awardNotes === "string" ? body.awardNotes.trim() : "";
+    const awardNotes = awardNotesRaw.length > 0 ? awardNotesRaw : null;
 
     console.log("[award] start", { quoteId, bidId });
 
@@ -32,6 +36,13 @@ export async function POST(
     if (!isUuidLike(bidId)) {
       return NextResponse.json(
         { ok: false, error: "invalid_bid_id" },
+        { status: 400 },
+      );
+    }
+
+    if (awardNotesRaw.length > 2000) {
+      return NextResponse.json(
+        { ok: false, error: "invalid_award_notes" },
         { status: 400 },
       );
     }
@@ -187,6 +198,33 @@ export async function POST(
         code: (error as { code?: string | null })?.code ?? null,
         message: (error as { message?: string | null })?.message ?? null,
       });
+    }
+
+    if (awardNotesRaw.length > 0) {
+      try {
+        const supportsAwardNotes = await hasColumns("quotes", ["award_notes"]);
+        if (supportsAwardNotes) {
+          const { error: notesError } = await supabaseServer()
+            .from("quotes")
+            .update({ award_notes: awardNotes })
+            .eq("id", quoteId);
+          if (notesError) {
+            console.warn("[award] award_notes update failed", {
+              quoteId,
+              bidId,
+              code: (notesError as { code?: string | null })?.code ?? null,
+              message: (notesError as { message?: string | null })?.message ?? null,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn("[award] award_notes update crashed", {
+          quoteId,
+          bidId,
+          code: (error as { code?: string | null })?.code ?? null,
+          message: (error as { message?: string | null })?.message ?? null,
+        });
+      }
     }
 
     console.log("[award] success", {
