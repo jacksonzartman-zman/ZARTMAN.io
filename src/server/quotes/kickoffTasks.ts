@@ -36,6 +36,262 @@ import {
 const QUOTE_KICKOFF_TASKS_TABLE = "quote_kickoff_tasks";
 const SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY = "quote_kickoff_tasks";
 const SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED = "quote_supplier_kickoff_tasks";
+const DEFAULT_KICKOFF_TASK_COUNT = DEFAULT_SUPPLIER_KICKOFF_TASKS.length;
+
+export type KickoffProgressRollup = {
+  totalTasks: number;
+  completedTasks: number;
+  isComplete: boolean;
+};
+
+/**
+ * Lightweight kickoff progress rollups for list pages (projects lists).
+ *
+ * Goals:
+ * - Cheap: 1 query for all visible quote ids (no heavy joins)
+ * - Schema-safe across environments:
+ *   - Phase 18.2.1+: quote-level kickoff tasks in `quote_kickoff_tasks` (status-based)
+ *   - Legacy: supplier-scoped kickoff tasks in `quote_kickoff_tasks` or `quote_supplier_kickoff_tasks` (completed/completed_at)
+ * - Fail-soft: returns zeros when schema is missing or query fails
+ */
+export async function loadKickoffProgressRollupsByQuoteId(args: {
+  quoteIds: string[];
+  /**
+   * When provided, constrains legacy supplier-scoped rollups to this supplier.
+   * (Used by supplier projects list.)
+   */
+  supplierId?: string | null;
+  /**
+   * When provided, constrains legacy supplier-scoped rollups to the awarded supplier
+   * for each quote id. (Used by customer projects list.)
+   */
+  awardedSupplierByQuoteId?: Map<string, string> | null;
+}): Promise<Map<string, KickoffProgressRollup>> {
+  const inputQuoteIds = Array.isArray(args.quoteIds) ? args.quoteIds : [];
+  const quoteIds = Array.from(
+    new Set(inputQuoteIds.map((id) => normalizeId(id)).filter(Boolean)),
+  );
+
+  const rollups = new Map<string, KickoffProgressRollup>();
+  if (quoteIds.length === 0) {
+    return rollups;
+  }
+
+  const supplierId = normalizeId(args.supplierId) || null;
+  const awardedSupplierByQuoteId =
+    args.awardedSupplierByQuoteId instanceof Map ? args.awardedSupplierByQuoteId : null;
+
+  const makeRollup = (totalTasks: number, completedTasks: number): KickoffProgressRollup => {
+    const total = Math.max(0, Math.floor(totalTasks ?? 0));
+    const completed = Math.max(0, Math.floor(completedTasks ?? 0));
+    const isComplete = total > 0 && completed >= total;
+    return { totalTasks: total, completedTasks: completed, isComplete };
+  };
+
+  // Prefer quote-level kickoff tasks (Phase 18.2.1+): status-based rollup.
+  const quoteLevelReady = await schemaGate({
+    enabled: true,
+    relation: QUOTE_KICKOFF_TASKS_TABLE,
+    requiredColumns: ["quote_id", "task_key", "status"],
+    warnPrefix: "[kickoff progress rollups]",
+    warnKey: "kickoff_rollups:quote_tasks_schema",
+  });
+
+  if (quoteLevelReady) {
+    // Initialize defaults so callers can render stable rollups even when no rows exist yet.
+    for (const quoteId of quoteIds) {
+      rollups.set(quoteId, makeRollup(DEFAULT_KICKOFF_TASK_COUNT, 0));
+    }
+
+    try {
+      type Row = { quote_id: string | null; status: string | null };
+      const { data, error } = await supabaseServer()
+        .from(QUOTE_KICKOFF_TASKS_TABLE)
+        .select("quote_id,status")
+        .in("quote_id", quoteIds)
+        .returns<Row[]>();
+
+      if (error) {
+        if (isMissingTableOrColumnError(error)) {
+          // Schema changed underneath us; return the initialized defaults.
+          return rollups;
+        }
+        console.error("[kickoff progress rollups] quote-level tasks query failed", {
+          quoteIdsCount: quoteIds.length,
+          error: serializeSupabaseError(error),
+        });
+        return rollups;
+      }
+
+      const totals = new Map<string, { total: number; completed: number }>();
+      for (const row of data ?? []) {
+        const quoteId = normalizeId(row?.quote_id);
+        if (!quoteId) continue;
+        const status = normalizeQuoteKickoffTaskStatus(row?.status) ?? "pending";
+        const existing = totals.get(quoteId) ?? { total: 0, completed: 0 };
+        existing.total += 1;
+        if (status === "complete") {
+          existing.completed += 1;
+        }
+        totals.set(quoteId, existing);
+      }
+
+      // Override defaults for quotes that have rows.
+      for (const [quoteId, value] of totals) {
+        rollups.set(
+          quoteId,
+          makeRollup(value.total > 0 ? value.total : DEFAULT_KICKOFF_TASK_COUNT, value.completed),
+        );
+      }
+
+      return rollups;
+    } catch (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return rollups;
+      }
+      console.error("[kickoff progress rollups] quote-level aggregation crashed", {
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return rollups;
+    }
+  }
+
+  // Back-compat: supplier-scoped tasks (completed/completed_at).
+  const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
+  const baseReady = await schemaGate({
+    enabled: true,
+    relation: supplierTasksTable,
+    requiredColumns: ["quote_id", "supplier_id", "task_key", "title"],
+    warnPrefix: "[kickoff progress rollups]",
+    warnKey: "kickoff_rollups:supplier_tasks_schema",
+  });
+
+  if (!baseReady) {
+    for (const quoteId of quoteIds) {
+      rollups.set(quoteId, makeRollup(0, 0));
+    }
+    return rollups;
+  }
+
+  const hasCompletedAt = await schemaGate({
+    enabled: true,
+    relation: supplierTasksTable,
+    requiredColumns: ["completed_at"],
+    warnPrefix: "[kickoff progress rollups]",
+    warnKey: "kickoff_rollups:supplier_tasks_completed_at",
+  });
+  const hasCompletedBool = hasCompletedAt
+    ? false
+    : await schemaGate({
+        enabled: true,
+        relation: supplierTasksTable,
+        requiredColumns: ["completed"],
+        warnPrefix: "[kickoff progress rollups]",
+        warnKey: "kickoff_rollups:supplier_tasks_completed_bool",
+      });
+
+  // Initialize defaults so the UI can render a stable rollup even when rows are missing.
+  for (const quoteId of quoteIds) {
+    rollups.set(quoteId, makeRollup(DEFAULT_KICKOFF_TASK_COUNT, 0));
+  }
+
+  const supplierIds = (() => {
+    if (supplierId) return [supplierId];
+    if (awardedSupplierByQuoteId) {
+      return Array.from(
+        new Set(
+          Array.from(awardedSupplierByQuoteId.values())
+            .map((id) => normalizeId(id))
+            .filter(Boolean),
+        ),
+      );
+    }
+    return [];
+  })();
+
+  if (supplierIds.length === 0) {
+    // We can't safely aggregate supplier-scoped tasks without supplier ids.
+    for (const quoteId of quoteIds) {
+      rollups.set(quoteId, makeRollup(0, 0));
+    }
+    return rollups;
+  }
+
+  try {
+    const select = hasCompletedAt
+      ? "quote_id,supplier_id,completed_at"
+      : hasCompletedBool
+        ? "quote_id,supplier_id,completed"
+        : "quote_id,supplier_id";
+
+    type Row = {
+      quote_id: string | null;
+      supplier_id: string | null;
+      completed?: boolean | null;
+      completed_at?: string | null;
+    };
+
+    const { data, error } = await supabaseServer()
+      .from(supplierTasksTable)
+      .select(select)
+      .in("quote_id", quoteIds)
+      .in("supplier_id", supplierIds)
+      .returns<Row[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return rollups;
+      }
+      console.error("[kickoff progress rollups] supplier-scoped tasks query failed", {
+        quoteIdsCount: quoteIds.length,
+        supplierIdsCount: supplierIds.length,
+        error: serializeSupabaseError(error),
+      });
+      return rollups;
+    }
+
+    const totals = new Map<string, { total: number; completed: number }>();
+    for (const row of data ?? []) {
+      const quoteId = normalizeId(row?.quote_id);
+      const rowSupplierId = normalizeId(row?.supplier_id);
+      if (!quoteId || !rowSupplierId) continue;
+
+      if (supplierId && rowSupplierId !== supplierId) continue;
+      if (awardedSupplierByQuoteId) {
+        const awarded = normalizeId(awardedSupplierByQuoteId.get(quoteId));
+        if (!awarded || awarded !== rowSupplierId) continue;
+      }
+
+      const existing = totals.get(quoteId) ?? { total: 0, completed: 0 };
+      existing.total += 1;
+
+      const isCompleted = hasCompletedAt
+        ? typeof row?.completed_at === "string" && row.completed_at.trim().length > 0
+        : Boolean(row?.completed);
+      if (isCompleted) {
+        existing.completed += 1;
+      }
+      totals.set(quoteId, existing);
+    }
+
+    for (const [quoteId, value] of totals) {
+      rollups.set(
+        quoteId,
+        makeRollup(value.total > 0 ? value.total : DEFAULT_KICKOFF_TASK_COUNT, value.completed),
+      );
+    }
+
+    return rollups;
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return rollups;
+    }
+    console.error("[kickoff progress rollups] supplier-scoped aggregation crashed", {
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return rollups;
+  }
+}
 
 async function resolveSupplierKickoffTasksTableName(): Promise<string> {
   // Keep permissive: some environments store completion via `completed_at` and may
