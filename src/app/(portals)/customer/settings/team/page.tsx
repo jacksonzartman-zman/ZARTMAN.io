@@ -34,7 +34,7 @@ export default async function CustomerTeamSettingsPage({
         actions={
           <Link
             href="/customer/settings"
-            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white motion-reduce:transition-none"
           >
             Back to settings
           </Link>
@@ -83,7 +83,7 @@ export default async function CustomerTeamSettingsPage({
           </Link>
           <Link
             href="/customer"
-            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white motion-reduce:transition-none"
           >
             Dashboard
           </Link>
@@ -131,7 +131,7 @@ export default async function CustomerTeamSettingsPage({
             </label>
             <button
               type="submit"
-              className="rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white"
+              className="rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white motion-reduce:transition-none"
             >
               Send invite
             </button>
@@ -143,12 +143,12 @@ export default async function CustomerTeamSettingsPage({
           description="Active users who can access this customer workspace."
         >
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table className="min-w-full table-fixed text-sm">
               <thead className="text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                 <tr>
-                  <th className="py-2 pr-4">Email</th>
-                  <th className="py-2 pr-4">Role</th>
-                  <th className="py-2 pr-4">Status</th>
+                  <th className="w-[20rem] py-2 pr-4">Email</th>
+                  <th className="w-[10rem] py-2 pr-4">Role</th>
+                  <th className="w-[10rem] py-2 pr-4">Status</th>
                 </tr>
               </thead>
               <tbody className="text-slate-200">
@@ -179,12 +179,12 @@ export default async function CustomerTeamSettingsPage({
           description="Invites that haven’t been accepted yet."
         >
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table className="min-w-full table-fixed text-sm">
               <thead className="text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                 <tr>
-                  <th className="py-2 pr-4">Email</th>
-                  <th className="py-2 pr-4">Invited</th>
-                  <th className="py-2 pr-4">Actions</th>
+                  <th className="w-[20rem] py-2 pr-4">Email</th>
+                  <th className="w-[12rem] py-2 pr-4">Invited</th>
+                  <th className="w-[18rem] py-2 pr-4 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="text-slate-200">

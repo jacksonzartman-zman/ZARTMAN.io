@@ -1,6 +1,9 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
-import { PORTAL_SURFACE_CARD, PORTAL_SURFACE_CARD_INTERACTIVE } from "./components/PortalShell";
+import {
+  PORTAL_SURFACE_CARD,
+  PORTAL_SURFACE_CARD_INTERACTIVE,
+} from "./components/portalSurfaceTokens";
 
 type PortalCardProps = {
   id?: string;

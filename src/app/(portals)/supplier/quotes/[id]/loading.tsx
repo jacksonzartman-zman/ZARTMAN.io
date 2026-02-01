@@ -3,8 +3,14 @@
  * - Done: Perceived speed (QuoteAtAGlanceBar + first sections skeleton)
  */
 
+import clsx from "clsx";
+
+import { PORTAL_SURFACE_CARD } from "@/app/(portals)/components/portalSurfaceTokens";
+
+const PORTAL_SKELETON_PULSE = "motion-safe:animate-pulse motion-reduce:animate-none";
+
 function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-2xl border border-slate-900/60 bg-slate-800/20 ${className}`} />;
+  return <div className={clsx(PORTAL_SURFACE_CARD, PORTAL_SKELETON_PULSE, className)} />;
 }
 
 export default function SupplierQuoteDetailLoading() {

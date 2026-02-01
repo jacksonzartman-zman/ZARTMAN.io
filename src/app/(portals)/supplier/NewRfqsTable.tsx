@@ -338,7 +338,15 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                               pending ? "opacity-60" : "",
                             )}
                           >
-                            {pending ? "Snoozing..." : "Snooze 24h"}
+                            <span className="inline-flex min-w-[6.5rem] items-center justify-center">
+                              <span>Snooze 24h</span>
+                              <span
+                                className={clsx("ml-1", pending ? "opacity-100" : "opacity-0")}
+                                aria-hidden="true"
+                              >
+                                …
+                              </span>
+                            </span>
                           </button>
                           <span className="select-none text-slate-700">·</span>
                           <button
@@ -396,7 +404,15 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                               pending ? "opacity-60" : "",
                             )}
                           >
-                            {pending ? "Declining..." : "Not a fit"}
+                            <span className="inline-flex min-w-[6.5rem] items-center justify-center">
+                              <span>Not a fit</span>
+                              <span
+                                className={clsx("ml-1", pending ? "opacity-100" : "opacity-0")}
+                                aria-hidden="true"
+                              >
+                                …
+                              </span>
+                            </span>
                           </button>
                         </div>
                         {error ? (
