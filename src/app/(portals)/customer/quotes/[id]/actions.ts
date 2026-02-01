@@ -20,6 +20,7 @@ import { upsertQuoteProject } from "@/server/quotes/projects";
 import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 import { updateCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 import { ensureKickoffTasksForOfferAward } from "@/server/quotes/kickoffTasks";
+import { upsertKickoffTaskCompletionAction } from "@/server/quotes/kickoffTasks";
 import { emitRfqEvent } from "@/server/rfqs/events";
 import {
   customerCreateQuotePart,
@@ -89,6 +90,14 @@ export type AwardBidAsCustomerResult =
 export type QuoteStatusTransitionState =
   | { ok: true; message: string }
   | { ok: false; error: string };
+
+export async function upsertCustomerKickoffTaskCompletionAction(args: {
+  quoteId: string;
+  taskKey: string;
+  completed: boolean;
+}) {
+  return upsertKickoffTaskCompletionAction(args);
+}
 
 const CUSTOMER_STATUS_TRANSITION_ERROR =
   "We couldn’t update this RFQ right now. Please try again.";
