@@ -9,6 +9,7 @@ import {
   toTimestamp,
 } from "@/lib/relativeTime";
 import type { UserNotification } from "@/server/notifications";
+import { UnreadBadge } from "@/components/shared/primitives/UnreadBadge";
 
 type NotificationsTrayProps = {
   viewAllHref: string;
@@ -61,7 +62,8 @@ export function NotificationsTray({ viewAllHref }: NotificationsTrayProps) {
       .finally(() => setLoading(false));
   }, [open]);
 
-  const badgeLabel = unreadCount > 9 ? "9+" : unreadCount > 0 ? String(unreadCount) : null;
+  const badgeLabel =
+    unreadCount > 0 ? (unreadCount > 99 ? "99+" : String(unreadCount)) : null;
 
   async function markAllAsRead() {
     try {
@@ -88,9 +90,10 @@ export function NotificationsTray({ viewAllHref }: NotificationsTrayProps) {
       >
         <BellIcon className="h-5 w-5" />
         {badgeLabel ? (
-          <span className="absolute -right-1 -top-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-sky-400 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950 ring-2 ring-slate-950">
-            {badgeLabel}
-          </span>
+          <UnreadBadge
+            count={unreadCount}
+            className="absolute -right-1 -top-1 ring-2 ring-slate-950"
+          />
         ) : null}
       </button>
 

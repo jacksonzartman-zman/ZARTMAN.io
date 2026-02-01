@@ -10,6 +10,7 @@ import { loadSupplierInbox } from "@/server/messages/inbox";
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
+import { UnreadBadge } from "@/components/shared/primitives/UnreadBadge";
 import {
   PORTAL_CELL,
   PORTAL_CELL_RIGHT,
@@ -167,11 +168,7 @@ export default async function SupplierMessagesPage() {
                           >
                             {threadLabel}
                           </span>
-                          {unread > 0 ? (
-                            <span className="inline-flex min-w-[1.75rem] items-center justify-center rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-semibold text-red-100">
-                              {unread > 99 ? "99+" : unread}
-                            </span>
-                          ) : null}
+                          <UnreadBadge count={unread} />
                         </div>
                       </td>
                       <td className={PORTAL_CELL}>

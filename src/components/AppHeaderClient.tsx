@@ -9,6 +9,7 @@ import { primaryCtaClasses } from "@/lib/ctas";
 import type { HeaderUser } from "./AppHeader";
 import { BrandMark } from "@/components/BrandMark";
 import { NotificationsTray } from "@/components/notifications/NotificationsTray";
+import { CountBadge } from "@/components/shared/primitives/CountBadge";
 import {
   PortalNavTabs,
   type PortalNavLink,
@@ -87,9 +88,13 @@ export default function AppHeaderClient({
       return {
         ...link,
         badge: (
-          <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
+          <CountBadge
+            tone="warning"
+            size="sm"
+            className="min-w-[1.6rem] tabular-nums"
+          >
             {formatBadgeCount(supplierDecisionCount)}
-          </span>
+          </CountBadge>
         ),
       };
     });

@@ -35,6 +35,7 @@ import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { matchQuotesToSupplier } from "@/server/suppliers";
 import { buildSupplierInboxRows } from "@/app/(portals)/supplier/inboxRows";
+import { UnreadBadge } from "@/components/shared/primitives/UnreadBadge";
 import {
   PORTAL_CELL,
   PORTAL_CELL_RIGHT,
@@ -558,11 +559,7 @@ export default async function SupplierQuotesPage({
                               className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
                             >
                               <span className="whitespace-nowrap">Messages</span>
-                              {unread > 0 ? (
-                                <span className="inline-flex min-w-[1.6rem] items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-100 tabular-nums">
-                                  {unread > 99 ? "99+" : unread}
-                                </span>
-                              ) : null}
+                              <UnreadBadge count={unread} />
                             </Link>
                           </div>
                         </div>
@@ -585,11 +582,7 @@ export default async function SupplierQuotesPage({
                               className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
                             >
                               <span className="whitespace-nowrap">Messages</span>
-                              {unread > 0 ? (
-                                <span className="inline-flex min-w-[1.6rem] items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-100 tabular-nums">
-                                  {unread > 99 ? "99+" : unread}
-                                </span>
-                              ) : null}
+                              <UnreadBadge count={unread} />
                             </Link>
                           </div>
                         </div>

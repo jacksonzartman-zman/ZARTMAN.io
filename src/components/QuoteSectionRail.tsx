@@ -12,7 +12,7 @@ export type QuoteSectionRailSection = {
   key: string;
   label: string;
   href: string;
-  badge?: string;
+  badge?: ReactNode;
   tone?: QuoteSectionRailTone;
 };
 
@@ -137,9 +137,17 @@ function SectionChip({
     <>
       <span className="whitespace-nowrap">{section.label}</span>
       {section.badge ? (
-        <TagPill size="sm" tone="slate" className="ml-1 min-w-6 justify-center bg-black/30">
-          {section.badge}
-        </TagPill>
+        typeof section.badge === "string" || typeof section.badge === "number" ? (
+          <TagPill
+            size="sm"
+            tone="slate"
+            className="ml-1 min-w-6 justify-center bg-black/30"
+          >
+            {section.badge}
+          </TagPill>
+        ) : (
+          <span className="ml-1">{section.badge}</span>
+        )
       ) : null}
     </>
   );
