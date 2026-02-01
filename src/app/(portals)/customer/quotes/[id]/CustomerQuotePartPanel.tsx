@@ -171,8 +171,8 @@ export function CustomerQuotePartPanel({
         </div>
       </header>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-4">
+      <div className="mt-6 grid gap-5 lg:grid-cols-12 lg:items-start lg:gap-8">
+        <div className="space-y-4 lg:col-span-9">
           {canRenderViewer ? (
             <CadViewerPanel
               className="p-4 sm:p-5"
@@ -206,7 +206,7 @@ export function CustomerQuotePartPanel({
           />
         </div>
 
-        <aside className="min-w-0 space-y-4">
+        <aside className="min-w-0 space-y-5 lg:col-span-3">
           {onProceedToOrder ? (
             <button
               type="button"
@@ -221,59 +221,47 @@ export function CustomerQuotePartPanel({
             </button>
           ) : null}
 
-          <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4">
+          <div className="space-y-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               Quote info
             </p>
-            <dl className="mt-3 grid min-w-0 gap-3 text-sm text-slate-200">
-              <div className="min-w-0 rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-                <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                  Part name
-                </dt>
+            <dl className="divide-y divide-slate-900/60 text-sm text-slate-200">
+              <div className="flex min-w-0 items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                <dt className="text-[11px] uppercase tracking-wide text-slate-500">Part name</dt>
                 <dd
-                  className="truncate font-medium text-slate-100"
+                  className="min-w-0 truncate font-medium text-slate-100"
                   title={selectedFileLabel ?? undefined}
                 >
                   {selectedFileLabel ?? "—"}
                 </dd>
               </div>
-              <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-                <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                  Upload date
-                </dt>
+              <div className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                <dt className="text-[11px] uppercase tracking-wide text-slate-500">Upload date</dt>
                 <dd className="font-medium text-slate-100">—</dd>
               </div>
               {processHint ? (
-                <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                    Process
-                  </dt>
+                <div className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">Process</dt>
                   <dd className="font-medium text-slate-100">{processHint}</dd>
                 </div>
               ) : null}
               {quantityHint != null && `${quantityHint}`.trim() ? (
-                <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                    Quantity
-                  </dt>
+                <div className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">Quantity</dt>
                   <dd className="font-medium text-slate-100">{quantityHint}</dd>
                 </div>
               ) : null}
               {targetDate ? (
-                <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                    Target date
-                  </dt>
+                <div className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">Target date</dt>
                   <dd className="font-medium text-slate-100">{targetDate}</dd>
                 </div>
               ) : null}
             </dl>
-            <p className="mt-3 text-xs text-slate-500">
-              Material will appear here when it’s provided.
-            </p>
-          </section>
+            <p className="text-xs text-slate-500">Material will appear here when it’s provided.</p>
+          </div>
 
-          <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Files
@@ -287,7 +275,7 @@ export function CustomerQuotePartPanel({
               </TagPill>
             </div>
 
-            <div className="mt-3 space-y-2">
+            <div className="space-y-2">
               {files.length === 0 ? (
                 <EmptyStateNotice
                   title="No files yet"
@@ -335,7 +323,7 @@ export function CustomerQuotePartPanel({
                         "w-full rounded-xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70",
                         isSelected
                           ? "border-emerald-400/40 bg-emerald-400/5"
-                          : "border-slate-900/60 bg-slate-950/30 hover:border-slate-800",
+                          : "border-slate-900/60 bg-slate-950/15 hover:border-slate-800 hover:bg-slate-950/20",
                       )}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -361,7 +349,7 @@ export function CustomerQuotePartPanel({
                 })
               )}
             </div>
-          </section>
+          </div>
         </aside>
       </div>
     </section>

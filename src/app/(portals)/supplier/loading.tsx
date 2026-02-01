@@ -20,7 +20,7 @@ export default function SupplierDashboardLoading() {
     <div className="space-y-5">
       <div className="h-28 animate-pulse rounded-2xl border border-slate-900/60 bg-slate-800/20" />
       <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-9">
           <section className="rounded-3xl border border-slate-900/60 bg-slate-950/60 p-6">
             <div className="h-4 w-40 animate-pulse rounded bg-slate-800/30" />
             <div className="mt-2 h-3 w-56 animate-pulse rounded bg-slate-800/20" />
@@ -34,7 +34,7 @@ export default function SupplierDashboardLoading() {
             </div>
           </section>
         </div>
-        <div className="space-y-6 lg:col-span-4">
+        <div className="space-y-6 lg:col-span-3">
           <section className="rounded-2xl border border-slate-900/50 bg-slate-950/35 p-6">
             <div className="h-3 w-24 animate-pulse rounded bg-slate-800/25" />
             <div className="mt-4 grid grid-cols-3 gap-4">

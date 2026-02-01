@@ -653,8 +653,8 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
         />
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
-        <aside className="space-y-4">
+      <div className="grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+        <aside className="space-y-4 lg:col-span-3">
           <PortalCard
             title="Filters"
             description="Refine which providers appear in results."
@@ -786,7 +786,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           </PortalCard>
         </aside>
 
-        <div className="space-y-6">
+        <div className="space-y-6 lg:col-span-9">
           {workspaceError ? (
             <EmptyStateCard
               title="Search unavailable"
@@ -815,7 +815,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                 </div>
               }
             >
-              <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+              <div className="border-l border-slate-800/70 pl-4">
                 <p className="text-sm font-semibold text-slate-100">
                   RFQ ID: {quoteIdParam}
                 </p>
@@ -873,7 +873,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                       )}
                     </p>
                   ) : null}
-                  <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+                  <div className="border-l border-slate-800/70 pl-4">
                     <p className="text-sm font-semibold text-slate-100">
                       {totalOfferCount > 0
                         ? `${totalOfferCount} offer${totalOfferCount === 1 ? "" : "s"} received`
@@ -1005,7 +1005,8 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               description="Pick an RFQ to see provider progress and offers."
             >
               <div className="space-y-3">
-                {recentQuotes.map((quote) => {
+                <div className="divide-y divide-slate-900/60">
+                  {recentQuotes.map((quote) => {
                   const lastActivity = formatRelativeTimeFromTimestamp(
                     toTimestamp(quote.lastActivityAt ?? quote.updatedAt ?? quote.createdAt),
                   );
@@ -1025,10 +1026,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                         ? award.totalPrice.trim()
                         : "—";
                   return (
-                    <div
-                      key={quote.id}
-                      className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-4"
-                    >
+                    <div key={quote.id} className="py-4 first:pt-0 last:pb-0">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div className="space-y-2">
                           <p className="text-base font-semibold text-white">{quote.rfqLabel}</p>
@@ -1079,7 +1077,8 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                       </div>
                     </div>
                   );
-                })}
+                  })}
+                </div>
                 <Link
                   href="/customer/quotes"
                   className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"

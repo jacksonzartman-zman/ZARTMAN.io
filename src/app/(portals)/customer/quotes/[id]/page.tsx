@@ -1863,8 +1863,8 @@ export default async function CustomerQuoteDetailPage({
           hasWinner={quoteHasWinner}
         />
       </div>
-      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.74fr)_minmax(0,0.26fr)] lg:gap-6 lg:space-y-0">
-        <div className="space-y-6">
+      <div className="space-y-6 lg:grid lg:grid-cols-12 lg:items-start lg:gap-8 lg:space-y-0">
+        <div className="space-y-6 lg:col-span-9">
           {awardedSupplierCard}
           {quoteHasWinner ? <PostAwardReassurancePanel quoteId={quote.id} /> : null}
           <CustomerProjectTimelineStrip steps={projectTimeline.steps} />
@@ -1962,8 +1962,11 @@ export default async function CustomerQuoteDetailPage({
               </>
             )}
           </DisclosureSection>
+
+          {timelineSection}
+          {notesSection}
         </div>
-        <aside className="space-y-5">
+        <aside className="space-y-5 lg:col-span-3">
           <PortalCard
             title="Workspace"
             description="Quick links and supporting details."
@@ -1973,8 +1976,6 @@ export default async function CustomerQuoteDetailPage({
           </PortalCard>
           {filesSection}
           {quoteDetailsSection}
-          {timelineSection}
-          {notesSection}
         </aside>
       </div>
     </PortalShell>

@@ -940,37 +940,30 @@ function SupplierQuoteWorkspace({
             value={formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
           />
         </dl>
+
+        <div className="h-px bg-slate-900/60" />
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              DFM notes
+            </p>
+            <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+              {derived.dfmNotes ??
+                "No DFM notes have been shared yet. Expect engineering guidance to appear here."}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Intake notes
+            </p>
+            <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+              {derived.intakeNotes ?? "No extra intake notes captured."}
+            </p>
+          </div>
+        </div>
       </div>
     </DisclosureSection>
-  );
-
-  const notesSection = (
-    <CollapsibleCard
-      title="Notes"
-      description="DFM feedback and intake notes."
-      defaultOpen={false}
-      className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
-    >
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            DFM notes
-          </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
-            {derived.dfmNotes ??
-              "No DFM notes have been shared yet. Expect engineering guidance to appear here."}
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Intake notes
-          </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
-            {derived.intakeNotes ?? "No extra intake notes captured."}
-          </p>
-        </div>
-      </div>
-    </CollapsibleCard>
   );
 
   let kickoffSection: ReactNode = null;
@@ -1172,8 +1165,8 @@ function SupplierQuoteWorkspace({
     >
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
-      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.74fr)_minmax(0,0.26fr)] lg:gap-6 lg:space-y-0">
-        <div className="space-y-5">
+      <div className="space-y-6 lg:grid lg:grid-cols-12 lg:items-start lg:gap-8 lg:space-y-0">
+        <div className="space-y-5 lg:col-span-9">
           {winnerCallout}
           <OneTimeLocalStorageAffirmation
             enabled={Boolean(existingBid)}
@@ -1257,73 +1250,78 @@ function SupplierQuoteWorkspace({
             )}
           </DisclosureSection>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-5 lg:col-span-3">
           <PortalCard
-            title="Capacity (Next Week)"
-            description="Advisory-only snapshot to help timeline planning."
+            title="Tools"
+            description="Supporting details for planning and communication."
             className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
           >
-            <div className="space-y-4">
-              <dl className="grid gap-3">
-                {capacityCapabilityOptions.map((capability) => {
-                  const raw = capacityLevelsByCapability.get(capability.key) ?? "";
-                  const label = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "Not set";
-                  return (
-                    <div
-                      key={capability.key}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3"
-                    >
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        {capability.label}
-                      </dt>
-                      <dd className="text-sm font-semibold text-slate-100">{label}</dd>
-                    </div>
-                  );
-                })}
-              </dl>
-
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-slate-500">
-                  Week starts {nextWeekStartDate}.
-                </p>
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/supplier/settings/capacity?week=${encodeURIComponent(nextWeekStartDate)}`}
-                    className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
-                  >
-                    Update capacity
-                  </Link>
-                  {shouldRecommendUpdate ? (
-                    <span className="rounded-full border border-yellow-500/30 bg-yellow-500/5 px-3 py-1 text-[11px] font-semibold text-yellow-100">
-                      Update recommended
-                    </span>
-                  ) : null}
+            <div className="space-y-5">
+              <section className="space-y-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Capacity (Next Week)
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Advisory-only snapshot to help timeline planning.
+                  </p>
                 </div>
-              </div>
-            </div>
-          </PortalCard>
-          <PortalCard
-            title="Email this thread"
-            description="Reply via email to post a supplier message."
-            className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
-          >
-            <div className="space-y-3">
-              <p className="text-xs text-slate-400">{replyToStatusCopy}</p>
-              <div className="flex flex-col gap-2">
-                <p className="break-anywhere rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 text-xs text-slate-100">
-                  {replyToAddress || "Not configured"}
+                <dl className="divide-y divide-slate-900/60">
+                  {capacityCapabilityOptions.map((capability) => {
+                    const raw = capacityLevelsByCapability.get(capability.key) ?? "";
+                    const label = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "Not set";
+                    return (
+                      <div key={capability.key} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {capability.label}
+                        </dt>
+                        <dd className="text-sm font-semibold text-slate-100">{label}</dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-slate-500">Week starts {nextWeekStartDate}.</p>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/supplier/settings/capacity?week=${encodeURIComponent(nextWeekStartDate)}`}
+                      className="text-xs font-semibold text-blue-200 underline-offset-4 hover:underline"
+                    >
+                      Update capacity
+                    </Link>
+                    {shouldRecommendUpdate ? (
+                      <span className="rounded-full border border-yellow-500/30 bg-yellow-500/5 px-3 py-1 text-[11px] font-semibold text-yellow-100">
+                        Update recommended
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+
+              <div className="h-px bg-slate-900/60" />
+
+              <section className="space-y-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Email this thread
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">{replyToStatusCopy}</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <p className="break-anywhere font-mono text-xs text-slate-100">
+                    {replyToAddress || "Not configured"}
+                  </p>
+                  <CopyTextButton text={replyToAddress} idleLabel="Copy email address" logPrefix="[email_bridge]" />
+                </div>
+                <p className="text-xs text-slate-500">
+                  Tip: keep the <span className="font-semibold text-slate-300">To</span> address
+                  unchanged so we can attach your reply to this RFQ.
                 </p>
-                <CopyTextButton text={replyToAddress} idleLabel="Copy email address" logPrefix="[email_bridge]" />
-              </div>
-              <p className="text-xs text-slate-500">
-                Tip: keep the <span className="font-semibold text-slate-300">To</span> address
-                unchanged so we can attach your reply to this RFQ.
-              </p>
+              </section>
             </div>
           </PortalCard>
           {filesSection}
           {rfqDetailsSection}
-          {notesSection}
         </div>
       </div>
     </PortalShell>
