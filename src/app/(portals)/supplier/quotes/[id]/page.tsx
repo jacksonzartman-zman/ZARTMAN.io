@@ -616,6 +616,14 @@ function SupplierQuoteWorkspace({
       >
         Back to RFQs
       </Link>
+      {hasProject ? (
+        <Link
+          href="/supplier/projects"
+          className="inline-flex items-center rounded-full border border-emerald-500/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-400 hover:text-white"
+        >
+          Projects
+        </Link>
+      ) : null}
       <Link
         href="/supplier"
         className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
@@ -625,9 +633,7 @@ function SupplierQuoteWorkspace({
     </div>
   );
   const supplierPrimaryAction = isWinningSupplier
-    ? hasProject
-      ? { label: "View project", href: "/supplier/projects", tone: "emerald" as const }
-      : { label: "Kickoff", href: "#kickoff", tone: "emerald" as const }
+    ? { label: "Kickoff", href: "#kickoff", tone: "emerald" as const }
     : resolvePrimaryAction({
         role: "supplier",
         quote: {
