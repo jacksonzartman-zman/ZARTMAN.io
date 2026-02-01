@@ -92,6 +92,7 @@ import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { TagPill } from "@/components/shared/primitives/TagPill";
+import { UnreadBadge } from "@/components/shared/primitives/UnreadBadge";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { loadSupplierBidDraft, type SupplierBidDraft } from "@/server/suppliers";
@@ -1377,11 +1378,11 @@ function buildSupplierQuoteSections(args: {
       label: "Messages",
       href: args.messagesHref,
       badge:
-        args.unreadCount > 0
-          ? `${args.unreadCount > 99 ? "99+" : args.unreadCount}`
-          : args.messageCount > 0
-            ? `${args.messageCount}`
-            : undefined,
+        args.unreadCount > 0 ? (
+          <UnreadBadge count={args.unreadCount} />
+        ) : args.messageCount > 0 ? (
+          `${args.messageCount}`
+        ) : undefined,
       tone: args.unreadCount > 0 ? "info" : "neutral",
     },
     { key: "uploads", label: "Uploads", href: "#uploads", badge: uploadsBadge },

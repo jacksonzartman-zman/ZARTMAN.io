@@ -132,6 +132,7 @@ import {
   normalizeCustomerOpsStatusStep,
 } from "@/lib/quote/customerOpsStatus";
 import { OneTimeLocalStorageAffirmation } from "@/app/(portals)/shared/OneTimeLocalStorageAffirmation";
+import { UnreadBadge } from "@/components/shared/primitives/UnreadBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -2356,11 +2357,11 @@ function buildCustomerQuoteSections(args: {
       label: "Messages",
       href: args.messagesHref,
       badge:
-        args.unreadCount > 0
-          ? `${args.unreadCount > 99 ? "99+" : args.unreadCount}`
-          : args.messageCount > 0
-            ? `${args.messageCount}`
-            : undefined,
+        args.unreadCount > 0 ? (
+          <UnreadBadge count={args.unreadCount} />
+        ) : args.messageCount > 0 ? (
+          `${args.messageCount}`
+        ) : undefined,
       tone: args.unreadCount > 0 ? "info" : "neutral",
     },
     { key: "uploads", label: "Uploads", href: "#uploads", badge: uploadsBadge },

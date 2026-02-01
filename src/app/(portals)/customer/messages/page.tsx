@@ -10,6 +10,7 @@ import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requi
 import { loadCustomerInbox } from "@/server/messages/inbox";
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { UnreadBadge } from "@/components/shared/primitives/UnreadBadge";
 import {
   PORTAL_ACTION_HINT,
   PORTAL_DIVIDER,
@@ -107,11 +108,7 @@ export default async function CustomerMessagesPage() {
                           >
                             {threadLabel}
                           </span>
-                          {unread > 0 ? (
-                            <span className="inline-flex min-w-[1.75rem] items-center justify-center whitespace-nowrap rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-semibold text-red-100">
-                              {unread > 99 ? "99+" : unread}
-                            </span>
-                          ) : null}
+                          <UnreadBadge count={unread} />
                         </span>
                         <span className="hidden shrink-0 items-center gap-2 whitespace-nowrap text-[11px] tabular-nums text-slate-500 md:flex">
                           <span className="text-slate-600">•</span>
