@@ -6,8 +6,10 @@ import {
 } from "@/server/admin/logging";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 import { logOpsEvent } from "@/server/ops/events";
+import { revalidatePath } from "next/cache";
 import {
   requireAdminUser,
+  createAuthClient,
   requireUser,
   UnauthorizedError,
 } from "@/server/auth";
@@ -17,6 +19,7 @@ import { emitQuoteEvent } from "@/server/quotes/events";
 import type { QuoteEventActorRole } from "@/server/quotes/events";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
+import type { KickoffTaskRow } from "@/components/KickoffTasksChecklist";
 import {
   DEFAULT_SUPPLIER_KICKOFF_TASKS,
   type SupplierKickoffTask,
@@ -1753,4 +1756,367 @@ export async function updateKickoffTaskStatusAction(args: {
   });
 
   return { ok: true };
+}
+
+export type LoadKickoffTasksForQuoteNormalizedResult =
+  | { ok: true; tasks: KickoffTaskRow[]; error: null }
+  | {
+      ok: false;
+      tasks: KickoffTaskRow[];
+      error: "schema-missing" | "denied" | "load-error";
+    };
+
+/**
+ * RLS-safe loader for kickoff tasks.
+ *
+ * Guarantees:
+ * - Returns a stable list (defaults) even when no rows exist yet.
+ * - Overlays any persisted rows onto the canonical defaults by `task_key`.
+ * - Does not mutate the DB (no seeding on read).
+ */
+export async function loadKickoffTasksForQuoteNormalized(
+  quoteId: string,
+): Promise<LoadKickoffTasksForQuoteNormalizedResult> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  const nowIso = new Date().toISOString();
+
+  const defaults: KickoffTaskRow[] = DEFAULT_QUOTE_KICKOFF_TASKS.map((task) => ({
+    taskKey: task.taskKey,
+    title: task.title,
+    description: task.description,
+    sortOrder: task.sortOrder,
+    status: "pending",
+    completedAt: null,
+    blockedReason: null,
+    updatedAt: nowIso,
+  }));
+
+  if (!normalizedQuoteId) {
+    return { ok: false, tasks: defaults, error: "load-error" };
+  }
+
+  const schemaReady = await schemaGate({
+    enabled: true,
+    relation: QUOTE_KICKOFF_TASKS_TABLE,
+    requiredColumns: [
+      "quote_id",
+      "task_key",
+      "title",
+      "description",
+      "sort_order",
+      "status",
+      "blocked_reason",
+      "completed_at",
+      "updated_at",
+    ],
+    warnPrefix: "[kickoff quote tasks]",
+    warnKey: "kickoff_quote_tasks:normalized_loader_schema",
+  });
+
+  if (!schemaReady) {
+    return { ok: false, tasks: defaults, error: "schema-missing" };
+  }
+
+  type RowV1 = {
+    quote_id: string | null;
+    task_key: string | null;
+    title: string | null;
+    description: string | null;
+    sort_order: number | null;
+    status: string | null;
+    blocked_reason: string | null;
+    completed_at: string | null;
+    updated_at: string | null;
+  };
+  type RowV2 = RowV1 & { completed_by_role?: string | null };
+
+  const SELECT_COLUMNS_V1 =
+    "quote_id,task_key,title,description,sort_order,status,blocked_reason,completed_at,updated_at";
+  const SELECT_COLUMNS_V2 = `${SELECT_COLUMNS_V1},completed_by_role`;
+
+  try {
+    const supabase = createAuthClient();
+    const selectAttempt = async (columns: string) =>
+      supabase
+        .from(QUOTE_KICKOFF_TASKS_TABLE as any)
+        .select(columns)
+        .eq("quote_id", normalizedQuoteId)
+        .order("sort_order", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true, nullsFirst: true } as any)
+        .returns<RowV2[]>();
+
+    const attemptV2 = await selectAttempt(SELECT_COLUMNS_V2);
+    let data = attemptV2.data;
+    let error = attemptV2.error;
+
+    if (error && isMissingTableOrColumnError(error)) {
+      const attemptV1 = await selectAttempt(SELECT_COLUMNS_V1);
+      data = attemptV1.data;
+      error = attemptV1.error;
+    }
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return { ok: false, tasks: defaults, error: "schema-missing" };
+      }
+      if (isRowLevelSecurityDeniedError(error)) {
+        return { ok: false, tasks: defaults, error: "denied" };
+      }
+      console.error("[kickoff quote tasks] normalized load failed", {
+        quoteId: normalizedQuoteId,
+        error: serializeSupabaseError(error),
+      });
+      return { ok: false, tasks: defaults, error: "load-error" };
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const byKey = new Map<string, KickoffTaskRow>();
+
+    for (const row of rows) {
+      const taskKey = normalizeId(row?.task_key);
+      if (!taskKey) continue;
+
+      const status = normalizeQuoteKickoffTaskStatus(row?.status) ?? "pending";
+      const updatedAt = normalizeOptionalText(row?.updated_at) ?? nowIso;
+
+      byKey.set(taskKey, {
+        taskKey,
+        title: normalizeOptionalText(row?.title) ?? taskKey,
+        description: normalizeOptionalText(row?.description),
+        sortOrder:
+          typeof row?.sort_order === "number" && Number.isFinite(row.sort_order)
+            ? row.sort_order
+            : 1,
+        status,
+        completedAt: normalizeOptionalText(row?.completed_at),
+        blockedReason: normalizeOptionalText(row?.blocked_reason),
+        updatedAt,
+      });
+    }
+
+    const merged = defaults.map((d) => byKey.get(d.taskKey) ?? d);
+    return { ok: true, tasks: merged, error: null };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return { ok: false, tasks: defaults, error: "schema-missing" };
+    }
+    if (isRowLevelSecurityDeniedError(error)) {
+      return { ok: false, tasks: defaults, error: "denied" };
+    }
+    console.error("[kickoff quote tasks] normalized load crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { ok: false, tasks: defaults, error: "load-error" };
+  }
+}
+
+export type UpsertKickoffTaskCompletionActionResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/**
+ * RLS-safe server action to upsert a single task's completion for the current actor.
+ *
+ * - If the row exists: UPDATE only completion-related fields.
+ * - If it doesn't: INSERT a default row then apply completion state.
+ * - Always revalidates quote workspace + projects lists after success.
+ */
+export async function upsertKickoffTaskCompletionAction(args: {
+  quoteId: string;
+  taskKey: string;
+  completed: boolean;
+}): Promise<UpsertKickoffTaskCompletionActionResult> {
+  "use server";
+
+  const quoteId = normalizeId(args.quoteId);
+  const taskKey = normalizeId(args.taskKey);
+  const completed = Boolean(args.completed);
+  if (!quoteId || !taskKey) return { ok: false, error: "invalid_input" };
+
+  const schemaReady = await schemaGate({
+    enabled: true,
+    relation: QUOTE_KICKOFF_TASKS_TABLE,
+    requiredColumns: [
+      "quote_id",
+      "task_key",
+      "title",
+      "description",
+      "sort_order",
+      "status",
+      "completed_at",
+      "completed_by_user_id",
+      "completed_by_role",
+      "blocked_reason",
+      "updated_at",
+    ],
+    warnPrefix: "[kickoff quote tasks]",
+    warnKey: "kickoff_quote_tasks:completion_upsert_schema",
+  });
+  if (!schemaReady) return { ok: false, error: "schema-missing" };
+
+  const user = await requireUser();
+  const actorUserId = normalizeId(user.id) || null;
+  if (!actorUserId) return { ok: false, error: "unauthorized" };
+
+  // Determine actor role for completion metadata (best-effort).
+  // We avoid over-fitting to portal context; the DB RLS policies remain the final gate.
+  const actorRole = await resolveKickoffCompletionActorRole({ quoteId, userId: actorUserId });
+  if (!actorRole) return { ok: false, error: "forbidden" };
+
+  const now = new Date().toISOString();
+  const updatePayload: Record<string, unknown> = {
+    status: completed ? "complete" : "pending",
+    completed_at: completed ? now : null,
+    completed_by_user_id: completed ? actorUserId : null,
+    completed_by_role: completed ? actorRole : null,
+    blocked_reason: null,
+    updated_at: now,
+  };
+
+  try {
+    const supabase = createAuthClient();
+
+    // Prefer UPDATE to avoid insert RLS checks for existing rows.
+    const { data: updatedRows, error: updateError } = await supabase
+      .from(QUOTE_KICKOFF_TASKS_TABLE as any)
+      .update(updatePayload)
+      .eq("quote_id", quoteId)
+      .eq("task_key", taskKey)
+      .select("id")
+      .returns<Array<{ id: string }>>();
+
+    if (updateError) {
+      if (isMissingTableOrColumnError(updateError)) return { ok: false, error: "schema-missing" };
+      if (isRowLevelSecurityDeniedError(updateError)) return { ok: false, error: "forbidden" };
+      console.error("[kickoff quote tasks] completion update failed", {
+        quoteId,
+        taskKey,
+        error: serializeSupabaseError(updateError),
+      });
+      return { ok: false, error: "update-error" };
+    }
+
+    if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+      revalidateKickoffPaths(quoteId);
+      return { ok: true };
+    }
+
+    const definition =
+      DEFAULT_QUOTE_KICKOFF_TASKS.find((t) => t.taskKey === taskKey) ?? null;
+
+    const insertPayload: Record<string, unknown> = {
+      quote_id: quoteId,
+      task_key: taskKey,
+      title: definition?.title ?? taskKey,
+      description: definition?.description ?? null,
+      sort_order: definition?.sortOrder ?? 1,
+      ...updatePayload,
+    };
+
+    const { error: insertError } = await supabase
+      .from(QUOTE_KICKOFF_TASKS_TABLE as any)
+      .insert(insertPayload);
+
+    if (insertError) {
+      const serialized = serializeSupabaseError(insertError);
+      if (isMissingTableOrColumnError(insertError)) return { ok: false, error: "schema-missing" };
+      if (isRowLevelSecurityDeniedError(insertError)) return { ok: false, error: "forbidden" };
+
+      // Race-safe: if someone inserted concurrently, retry UPDATE once.
+      if (serialized.code === "23505") {
+        const { error: retryError } = await supabase
+          .from(QUOTE_KICKOFF_TASKS_TABLE as any)
+          .update(updatePayload)
+          .eq("quote_id", quoteId)
+          .eq("task_key", taskKey);
+        if (!retryError) {
+          revalidateKickoffPaths(quoteId);
+          return { ok: true };
+        }
+      }
+
+      console.error("[kickoff quote tasks] completion insert failed", {
+        quoteId,
+        taskKey,
+        error: serialized,
+      });
+      return { ok: false, error: "insert-error" };
+    }
+
+    revalidateKickoffPaths(quoteId);
+    return { ok: true };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return { ok: false, error: "schema-missing" };
+    if (isRowLevelSecurityDeniedError(error)) return { ok: false, error: "forbidden" };
+    console.error("[kickoff quote tasks] completion upsert crashed", {
+      quoteId,
+      taskKey,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { ok: false, error: "upsert-error" };
+  }
+}
+
+async function resolveKickoffCompletionActorRole(args: {
+  quoteId: string;
+  userId: string;
+}): Promise<"customer" | "supplier" | null> {
+  const quoteId = normalizeId(args.quoteId);
+  const userId = normalizeId(args.userId);
+  if (!quoteId || !userId) return null;
+
+  // Prefer supplier when the user is the awarded supplier.
+  try {
+    const profile = await loadSupplierProfileByUserId(userId);
+    const supplierId = normalizeId(profile?.supplier?.id ?? null) || null;
+    if (supplierId) {
+      const { data: quoteRow } = await supabaseServer()
+        .from("quotes")
+        .select("awarded_supplier_id")
+        .eq("id", quoteId)
+        .maybeSingle<{ awarded_supplier_id: string | null }>();
+      const awardedSupplierId = normalizeId(quoteRow?.awarded_supplier_id ?? null) || null;
+      if (awardedSupplierId && awardedSupplierId === supplierId) {
+        return "supplier";
+      }
+    }
+  } catch {
+    // ignore and fall through
+  }
+
+  // Customer ownership (minimal, consistent with existing RLS patterns).
+  try {
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
+      .from("quotes")
+      .select("customer_id")
+      .eq("id", quoteId)
+      .maybeSingle<{ customer_id: string | null }>();
+    if (!quoteError) {
+      const customerId = normalizeId(quoteRow?.customer_id ?? null) || null;
+      if (customerId) {
+        const { data: customerRow, error: customerError } = await supabaseServer()
+          .from("customers")
+          .select("user_id")
+          .eq("id", customerId)
+          .maybeSingle<{ user_id: string | null }>();
+        const ownerUserId = normalizeId(customerRow?.user_id ?? null) || null;
+        if (!customerError && ownerUserId && ownerUserId === userId) {
+          return "customer";
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
+
+function revalidateKickoffPaths(quoteId: string) {
+  revalidatePath(`/customer/quotes/${quoteId}`);
+  revalidatePath(`/supplier/quotes/${quoteId}`);
+  revalidatePath(`/admin/quotes/${quoteId}`);
+  revalidatePath("/customer/projects");
+  revalidatePath("/supplier/projects");
 }
