@@ -21,6 +21,11 @@ export type InboxRow = {
   lastMessageAt: string;
   lastMessagePreview: string;
   needsReplyFrom: "customer" | "supplier" | "admin" | "none" | "unknown";
+  /**
+   * Lightweight inbox-triage signal: true when the viewer has unread messages
+   * and the latest message was authored by someone else.
+   */
+  needsReply: boolean;
   unreadCount: number;
   // Workflow hints
   quoteStatus: string;
@@ -408,6 +413,7 @@ function buildInboxRows(args: {
     const lastMessage = unreadSummary.lastMessage;
     const lastMessageAt = lastMessage?.created_at ?? null;
     const lastMessagePreview = (lastMessage?.body ?? "").trim();
+    const unreadCount = Math.max(0, Math.floor(unreadSummary.unreadCount ?? 0));
 
     // Only include quotes that have at least one message (this is an inbox).
     if (!lastMessageAt) continue;
@@ -427,6 +433,8 @@ function buildInboxRows(args: {
 
     const signal = args.threadSignalsByQuoteId.get(quoteId) ?? null;
     const needsReplyFrom = signal ? computeNeedsReplyFrom(signal) : "unknown";
+    const lastAuthorRole = signal?.lastMessageAuthorRole ?? null;
+    const needsReply = Boolean(unreadCount > 0 && lastAuthorRole && lastAuthorRole !== args.roleView);
 
     rows.push({
       quoteId,
@@ -435,14 +443,18 @@ function buildInboxRows(args: {
       lastMessageAt,
       lastMessagePreview: lastMessagePreview || "—",
       needsReplyFrom,
-      unreadCount: Math.max(0, Math.floor(unreadSummary.unreadCount ?? 0)),
+      needsReply,
+      unreadCount,
       quoteStatus: getQuoteStatusLabel(quote.status),
       hasWinner,
       kickoffStatus,
     });
   }
 
-  rows.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+  rows.sort((a, b) => {
+    if (a.needsReply !== b.needsReply) return a.needsReply ? -1 : 1;
+    return b.lastMessageAt.localeCompare(a.lastMessageAt);
+  });
   return rows;
 }
 
