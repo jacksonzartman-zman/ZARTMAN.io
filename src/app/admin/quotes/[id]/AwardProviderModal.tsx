@@ -33,6 +33,7 @@ export function AwardProviderModal({
 }: AwardProviderModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   const [providerId, setProviderId] = useState<string>(
     typeof initialProviderId === "string" ? initialProviderId : "",
@@ -96,6 +97,7 @@ export function AwardProviderModal({
     if (state.status !== "success") return;
     router.refresh();
     setOpen(false);
+    setConfirmed(false);
   }, [router, state.status]);
 
   const fieldErrorProvider =
@@ -110,7 +112,10 @@ export function AwardProviderModal({
       <button
         type="button"
         disabled={Boolean(disabled)}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen((v) => !v);
+          setConfirmed(false);
+        }}
         className={clsx(
           "rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition",
           disabled
@@ -118,172 +123,179 @@ export function AwardProviderModal({
             : "border-emerald-500/60 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
         )}
       >
-        Award supplier
+        {open ? "Close award" : "Award supplier"}
       </button>
 
       {open ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Award supplier"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setOpen(false);
-          }}
-        >
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Award supplier</h3>
-                <p className="mt-1 text-sm text-slate-300">
-                  Select the winning provider (optionally tie to a specific offer).
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
-              >
-                Close
-              </button>
+        <div className="mt-3 rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-slate-100">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Award supplier (provider offer)</h3>
+              <p className="mt-1 text-xs text-slate-400">
+                Select the winning provider (optionally tie to a specific offer). Then confirm.
+              </p>
             </div>
-
-            <form
-              action={formAction}
-              onSubmit={(event) => {
-                const confirmed = window.confirm(
-                  `Award this RFQ to ${selectedProviderLabel}?`,
-                );
-                if (!confirmed) event.preventDefault();
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setConfirmed(false);
               }}
-              className="mt-4 space-y-4"
+              className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
             >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Provider (required)
-                  </span>
-                  <select
-                    name="providerId"
-                    required
-                    value={providerId}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setProviderId(next);
-                      // Reset offer selection if provider changes.
-                      setOfferId("");
-                    }}
-                    className={clsx(
-                      "w-full rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
-                      fieldErrorProvider ? "border-amber-500/50" : "border-slate-800",
-                    )}
-                  >
-                    <option value="" disabled>
-                      Select a provider…
-                    </option>
-                    {providerOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  {fieldErrorProvider ? (
-                    <p className="text-xs text-amber-300" aria-live="polite">
-                      {fieldErrorProvider}
-                    </p>
-                  ) : null}
-                </label>
+              Close
+            </button>
+          </div>
 
-                <label className="space-y-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Offer (optional)
-                  </span>
-                  <select
-                    name="offerId"
-                    value={offerId}
-                    onChange={(e) => setOfferId(e.target.value)}
-                    disabled={!providerId}
-                    className={clsx(
-                      "w-full rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
-                      !providerId ? "cursor-not-allowed opacity-70" : null,
-                      fieldErrorOffer ? "border-amber-500/50" : "border-slate-800",
-                    )}
-                  >
-                    <option value="">—</option>
-                    {offersForProvider.map((offer) => (
-                      <option key={offer.id} value={offer.id}>
-                        {offer.id.slice(0, 8).toUpperCase()}
-                        {(() => {
-                          const financial = formatOfferFinancialSummary(offer);
-                          return financial ? ` · ${financial}` : "";
-                        })()}
-                        {offer.lead_time_days_min || offer.lead_time_days_max
-                          ? ` · ${offer.lead_time_days_min ?? "?"}-${offer.lead_time_days_max ?? "?"}d`
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {fieldErrorOffer ? (
-                    <p className="text-xs text-amber-300" aria-live="polite">
-                      {fieldErrorOffer}
-                    </p>
-                  ) : null}
-                </label>
-              </div>
-
-              <label className="space-y-1 block">
+          <form action={formAction} className="mt-4 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Award notes (optional)
+                  Provider (required)
                 </span>
-                <textarea
-                  name="awardNotes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  maxLength={2000}
-                  placeholder="Optional internal notes (why this provider won, any caveats, etc.)"
+                <select
+                  name="providerId"
+                  required
+                  value={providerId}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setProviderId(next);
+                    setOfferId("");
+                    setConfirmed(false);
+                  }}
                   className={clsx(
-                    "w-full resize-none rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
-                    fieldErrorNotes ? "border-amber-500/50" : "border-slate-800",
+                    "w-full rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                    fieldErrorProvider ? "border-amber-500/50" : "border-slate-800",
                   )}
-                />
-                {fieldErrorNotes ? (
+                >
+                  <option value="" disabled>
+                    Select a provider…
+                  </option>
+                  {providerOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                {fieldErrorProvider ? (
                   <p className="text-xs text-amber-300" aria-live="polite">
-                    {fieldErrorNotes}
+                    {fieldErrorProvider}
                   </p>
                 ) : null}
               </label>
 
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                {state.status === "error" && state.error ? (
-                  <span className="text-xs text-amber-300" aria-live="polite">
-                    {state.error}
-                  </span>
+              <label className="space-y-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Offer (optional)
+                </span>
+                <select
+                  name="offerId"
+                  value={offerId}
+                  onChange={(e) => {
+                    setOfferId(e.target.value);
+                    setConfirmed(false);
+                  }}
+                  disabled={!providerId}
+                  className={clsx(
+                    "w-full rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                    !providerId ? "cursor-not-allowed opacity-70" : null,
+                    fieldErrorOffer ? "border-amber-500/50" : "border-slate-800",
+                  )}
+                >
+                  <option value="">—</option>
+                  {offersForProvider.map((offer) => (
+                    <option key={offer.id} value={offer.id}>
+                      {offer.id.slice(0, 8).toUpperCase()}
+                      {(() => {
+                        const financial = formatOfferFinancialSummary(offer);
+                        return financial ? ` · ${financial}` : "";
+                      })()}
+                      {offer.lead_time_days_min || offer.lead_time_days_max
+                        ? ` · ${offer.lead_time_days_min ?? "?"}-${offer.lead_time_days_max ?? "?"}d`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+                {fieldErrorOffer ? (
+                  <p className="text-xs text-amber-300" aria-live="polite">
+                    {fieldErrorOffer}
+                  </p>
                 ) : null}
-                {state.status === "success" && state.message ? (
-                  <span className="text-xs text-emerald-300" aria-live="polite">
-                    {state.message}
-                  </span>
-                ) : null}
-                <SubmitButton />
-              </div>
-            </form>
-          </div>
+              </label>
+            </div>
+
+            <label className="space-y-1 block">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Award notes (optional)
+              </span>
+              <textarea
+                name="awardNotes"
+                value={notes}
+                onChange={(e) => {
+                  setNotes(e.target.value);
+                  setConfirmed(false);
+                }}
+                rows={3}
+                maxLength={2000}
+                placeholder="Optional internal notes (why this provider won, any caveats, etc.)"
+                className={clsx(
+                  "w-full resize-none rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                  fieldErrorNotes ? "border-amber-500/50" : "border-slate-800",
+                )}
+              />
+              {fieldErrorNotes ? (
+                <p className="text-xs text-amber-300" aria-live="polite">
+                  {fieldErrorNotes}
+                </p>
+              ) : null}
+            </label>
+
+            <label className="flex items-start gap-2 rounded-xl border border-slate-900/60 bg-black/20 px-4 py-3 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                I confirm awarding this RFQ to{" "}
+                <span className="font-semibold text-slate-100">
+                  {selectedProviderLabel}
+                </span>
+                .
+              </span>
+            </label>
+
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {state.status === "error" && state.error ? (
+                <span className="text-xs text-amber-300" aria-live="polite">
+                  {state.error}
+                </span>
+              ) : null}
+              {state.status === "success" && state.message ? (
+                <span className="text-xs text-emerald-300" aria-live="polite">
+                  {state.message}
+                </span>
+              ) : null}
+              <SubmitButton disabled={!confirmed} />
+            </div>
+          </form>
         </div>
       ) : null}
     </>
   );
 }
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
+  const isDisabled = pending || Boolean(disabled);
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={isDisabled}
       className={clsx(
         "rounded-full border border-emerald-500/60 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition",
-        pending
+        isDisabled
           ? "cursor-not-allowed opacity-70"
           : "hover:bg-emerald-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
       )}
