@@ -9,7 +9,6 @@ import type { MutationResult } from "@/server/types/results";
 const TABLE_NAME = "quote_projects";
 const SELECT_COLUMNS =
   "id,quote_id,supplier_id,status,po_number,target_ship_date,notes,created_at,updated_at";
-const DEFAULT_PROJECT_STATUS = "planning";
 
 /**
  * public.quote_projects currently stores:
@@ -163,17 +162,45 @@ export async function ensureQuoteProjectForWinner(
     };
   }
 
-  const payload = {
-    quote_id: quoteId,
-    supplier_id: winningSupplierId,
-    status: DEFAULT_PROJECT_STATUS,
-    updated_at: new Date().toISOString(),
-  };
-
   try {
+    let shouldSetDefaultStatus = false;
+    try {
+      const { data: existingRow, error: existingError } = await supabaseServer()
+        .from(TABLE_NAME)
+        .select("id")
+        .eq("quote_id", quoteId)
+        .maybeSingle<{ id: string }>();
+
+      if (existingError && !isMissingTableOrColumnError(existingError)) {
+        console.warn("[quote projects] ensure existing lookup failed", {
+          quoteId,
+          error: serializeSupabaseError(existingError),
+        });
+      }
+
+      shouldSetDefaultStatus = !existingRow?.id;
+    } catch (existingError) {
+      console.warn("[quote projects] ensure existing lookup crashed", {
+        quoteId,
+        error: serializeSupabaseError(existingError),
+      });
+      // Best-effort: if we can't determine existence, avoid forcing a status value.
+      shouldSetDefaultStatus = false;
+    }
+
+    // Upsert winner linkage so awarded quotes always have a project row.
+    // Intentionally do not overwrite customer-entered fields (PO/ship date/notes) and
+    // avoid overriding status if it has progressed beyond the initial default.
+    const payload = {
+      quote_id: quoteId,
+      supplier_id: winningSupplierId,
+      ...(shouldSetDefaultStatus ? { status: "planning" } : {}),
+      updated_at: new Date().toISOString(),
+    };
+
     const { data, error } = await supabaseServer()
       .from(TABLE_NAME)
-      .insert(payload)
+      .upsert(payload, { onConflict: "quote_id" })
       .select(SELECT_COLUMNS)
       .single<QuoteProjectRecord>();
 
@@ -194,25 +221,6 @@ export async function ensureQuoteProjectForWinner(
         };
       }
 
-      if (isUniqueConstraintError(error)) {
-        const existing = await loadQuoteProjectForQuote(quoteId);
-        if (existing.ok) {
-          console.info("[quote projects] ensure reused existing", {
-            quoteId,
-            winningSupplierId,
-            projectId: existing.project.id,
-          });
-          return existing;
-        }
-
-        console.error("[quote projects] ensure conflict but fetch failed", {
-          quoteId,
-          winningSupplierId,
-          error: existing.error,
-        });
-        return existing;
-      }
-
       console.error("[quote projects] ensure failed", {
         quoteId,
         winningSupplierId,
@@ -227,7 +235,7 @@ export async function ensureQuoteProjectForWinner(
     }
 
     if (data) {
-      console.info("[quote projects] ensure created", {
+      console.info("[quote projects] ensure upserted", {
         quoteId,
         winningSupplierId,
         projectId: data.id,
@@ -439,14 +447,6 @@ function sanitizeNotes(value?: string | null): string | null {
     return null;
   }
   return trimmed.slice(0, 2000);
-}
-
-function isUniqueConstraintError(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-  const code = (error as { code?: string }).code;
-  return code === "23505";
 }
 
 const MUTATION_GENERIC_ERROR =

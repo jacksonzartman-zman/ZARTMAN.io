@@ -108,21 +108,8 @@ export async function POST(
 
     const awardedBidId =
       typeof quote.awarded_bid_id === "string" ? quote.awarded_bid_id.trim() : "";
-    if (awardedBidId) {
-      if (awardedBidId === bidId) {
-        console.log("[award] blocked already awarded", {
-          quoteId,
-          awardedBidId,
-        });
-        return NextResponse.json({
-          ok: true,
-          alreadyAwarded: true,
-          quoteId,
-          bidId,
-          supplierId: bid.supplier_id,
-        });
-      }
-
+    const alreadyAwarded = Boolean(awardedBidId && awardedBidId === bidId);
+    if (awardedBidId && !alreadyAwarded) {
       console.log("[award] blocked already awarded", {
         quoteId,
         awardedBidId,
@@ -235,6 +222,7 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
+      alreadyAwarded,
       quoteId,
       bidId,
       supplierId,
