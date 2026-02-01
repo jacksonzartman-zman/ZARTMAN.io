@@ -80,6 +80,7 @@ import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
+import { loadKickoffTasksForQuoteNormalized } from "@/server/quotes/kickoffTasks";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { CustomerPartsSection } from "./CustomerPartsSection";
@@ -119,6 +120,7 @@ import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 import { CustomerQuoteIntroRequestCtaRow } from "./CustomerQuoteIntroRequestCtaRow";
 import { CustomerProjectTimelineStrip } from "./CustomerProjectTimelineStrip";
+import { CustomerKickoffTasksCard } from "./CustomerKickoffTasksCard";
 import { hasCustomerIntroRequested } from "@/server/customer/introRequests";
 import { computeCustomerCoverageConfidence } from "@/server/customer/coverageConfidence";
 import { buildCustomerCompareOffers } from "@/server/customer/compareOffers";
@@ -1767,13 +1769,18 @@ export default async function CustomerQuoteDetailPage({
       </DisclosureSection>
     ) : null;
 
+  const kickoffTasksSurfaceEnabled = quoteHasWinner || hasProject;
+  const kickoffTasksResult = kickoffTasksSurfaceEnabled
+    ? await loadKickoffTasksForQuoteNormalized(quote.id)
+    : null;
+
   const kickoffSection = (
     <DisclosureSection
       id="kickoff"
-      className="scroll-mt-24"
+      className={clsx("scroll-mt-24", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
       title="Kickoff"
       description="Track the final confirmations between selection and ordering."
-      defaultOpen={false}
+      defaultOpen={kickoffTasksSurfaceEnabled}
     >
       <div className="space-y-6">
         {fileCount === 0 ? (
@@ -1788,27 +1795,38 @@ export default async function CustomerQuoteDetailPage({
             description="Once a supplier is selected, kickoff will track final confirmations before ordering."
             action={{ label: "Open messages", href: messagesHref }}
           />
-        ) : !quoteHasWinner ? (
+        ) : !kickoffTasksSurfaceEnabled ? (
           <EmptyStateCard
-            title="Kickoff starts after selection"
-            description="Compare offers to confirm a supplier. Kickoff becomes available right after."
+            title="Kickoff tasks unlock after award"
+            description="Once you award a supplier, you’ll see a calm checklist of next steps here."
             action={{ label: "Go to compare offers", href: "#compare-offers" }}
           />
         ) : (
-          <KickoffChecklistCard
-            quoteId={quote.id}
-            readOnly={readOnly}
-            messagesHref={messagesHref}
-            workspaceStatus={workspaceStatus}
-            selectedSupplierName={winningSupplierName ?? null}
-            changeRequestsChecklistSummary={changeRequestsChecklistSummary}
-            materialFinish={intakeMaterialFinishLabel}
-            tolerances={kickoffTolerances}
-            shipDate={intakeTargetShipDateLabel}
-            deliveryDetails={kickoffDeliveryDetails}
-            poOrPaymentMethod={kickoffPoPaymentMethod}
-            revisionOrVersion={kickoffRevisionVersion}
-          />
+          <div className="space-y-6">
+            <CustomerKickoffTasksCard
+              quoteId={quote.id}
+              tasks={kickoffTasksResult?.tasks ?? []}
+              readOnly={readOnly}
+              title="Kickoff tasks"
+            />
+
+            {quoteHasWinner ? (
+              <KickoffChecklistCard
+                quoteId={quote.id}
+                readOnly={readOnly}
+                messagesHref={messagesHref}
+                workspaceStatus={workspaceStatus}
+                selectedSupplierName={winningSupplierName ?? null}
+                changeRequestsChecklistSummary={changeRequestsChecklistSummary}
+                materialFinish={intakeMaterialFinishLabel}
+                tolerances={kickoffTolerances}
+                shipDate={intakeTargetShipDateLabel}
+                deliveryDetails={kickoffDeliveryDetails}
+                poOrPaymentMethod={kickoffPoPaymentMethod}
+                revisionOrVersion={kickoffRevisionVersion}
+              />
+            ) : null}
+          </div>
         )}
       </div>
     </DisclosureSection>
@@ -2167,8 +2185,8 @@ function KickoffChecklistCard({
 
   return (
     <PortalCard
-      title="Kickoff"
-      description="Track final confirmations between selection and ordering."
+      title="Kickoff details"
+      description="Captured information used during kickoff."
       action={<StatusPill status={workspaceStatus} />}
     >
       <p className="text-xs text-slate-400">This portal doesn’t place orders yet.</p>
