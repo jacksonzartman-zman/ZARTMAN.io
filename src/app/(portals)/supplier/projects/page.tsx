@@ -41,18 +41,15 @@ function formatAwardedDate(value: string | null): string {
   return formatDateTime(value) ?? "—";
 }
 
-function formatKickoffStatus(summary: {
+function formatKickoffRollupLine(summary: {
   totalTasks: number;
   completedTasks: number;
-  isComplete: boolean;
-}): { label: string; detail: string; tone: string } {
+}): string {
   const total = Math.max(0, Math.floor(summary.totalTasks ?? 0));
   const completed = Math.max(0, Math.floor(summary.completedTasks ?? 0));
-  const isComplete = Boolean(summary.isComplete);
-  const label = isComplete ? "Complete" : "In progress";
-  const detail = total > 0 ? `${completed} / ${total}` : "—";
-  const tone = isComplete ? "text-emerald-300" : "text-blue-200";
-  return { label, detail, tone };
+  if (total <= 0) return "Kickoff: —";
+  const clampedCompleted = Math.min(total, completed);
+  return `Kickoff: ${clampedCompleted}/${total} complete`;
 }
 
 function formatMessageSenderLabel(senderRole: string | null | undefined): string {
@@ -152,7 +149,7 @@ export default async function SupplierProjectsPage() {
                   const customerLabel = project.customerName?.trim()
                     ? project.customerName
                     : "Customer pending";
-                  const kickoff = formatKickoffStatus(project.kickoff);
+                  const kickoffRollupLine = formatKickoffRollupLine(project.kickoff);
                   const summary = messageSummary[project.id];
                   const hasUnread = Boolean(summary && summary.unreadCount > 0);
                   const lastMessageAt = summary?.lastMessage?.created_at ?? null;
@@ -233,14 +230,9 @@ export default async function SupplierProjectsPage() {
                         </div>
                       </td>
                       <td className={`hidden md:table-cell ${PORTAL_CELL}`}>
-                        <div className="space-y-1">
-                          <p className={clsx("font-medium", kickoff.tone)}>
-                            {kickoff.label}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            {kickoff.detail} tasks completed
-                          </p>
-                        </div>
+                        <p className="min-w-0 truncate text-xs font-medium text-slate-400">
+                          {kickoffRollupLine}
+                        </p>
                       </td>
                       <td className={`hidden lg:table-cell ${PORTAL_CELL}`}>
                         <div className="space-y-1">

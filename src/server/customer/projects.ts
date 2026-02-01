@@ -4,6 +4,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { CUSTOMER_VISIBLE_TIMELINE_EVENT_TYPES } from "@/server/quotes/events";
+import { loadKickoffProgressRollupsByQuoteId } from "@/server/quotes/kickoffTasks";
 
 type AwardedProjectQuoteRow = {
   id: string;
@@ -128,12 +129,12 @@ export async function getCustomerAwardedQuotesForProjects({
     ),
   );
 
-  const [supplierMap, kickoffMap] = await Promise.all([
+  const awardedByQuoteId = buildAwardedSupplierMap(quotes);
+  const [supplierMap, kickoffByQuoteId] = await Promise.all([
     loadSupplierNameMap(supplierIds),
-    loadKickoffSummaryMap({
+    loadKickoffRollupsByQuoteId({
       quoteIds,
-      supplierIds,
-      awardedByQuoteId: buildAwardedSupplierMap(quotes),
+      awardedSupplierByQuoteId: awardedByQuoteId,
     }),
   ]);
 
@@ -144,8 +145,7 @@ export async function getCustomerAwardedQuotesForProjects({
     const supplierName = awardedSupplierId
       ? supplierMap.get(awardedSupplierId) ?? awardedSupplierId
       : null;
-    const kickoffKey = `${quote.id}:${awardedSupplierId ?? ""}`;
-    const kickoffBase = kickoffMap.get(kickoffKey) ?? emptyKickoffSummary();
+    const kickoffBase = kickoffByQuoteId.get(quote.id) ?? emptyKickoffSummary();
     const kickoffCompleteFromQuote =
       typeof quote.kickoff_completed_at === "string" &&
       quote.kickoff_completed_at.trim().length > 0;
@@ -219,83 +219,36 @@ async function loadSupplierNameMap(
   return map;
 }
 
-async function loadKickoffSummaryMap({
+async function loadKickoffRollupsByQuoteId({
   quoteIds,
-  supplierIds,
-  awardedByQuoteId,
+  awardedSupplierByQuoteId,
 }: {
   quoteIds: string[];
-  supplierIds: string[];
-  awardedByQuoteId: Map<string, string>;
+  awardedSupplierByQuoteId: Map<string, string>;
 }): Promise<Map<string, CustomerProjectKickoffSummary>> {
   const map = new Map<string, CustomerProjectKickoffSummary>();
-  if (quoteIds.length === 0 || supplierIds.length === 0) {
+  if (quoteIds.length === 0) {
     return map;
   }
 
-  try {
-    const { data, error } = await supabaseServer()
-      .from("quote_kickoff_tasks")
-      .select("quote_id,supplier_id,completed")
-      .in("quote_id", quoteIds)
-      .in("supplier_id", supplierIds)
-      .returns<
-        { quote_id: string; supplier_id: string; completed: boolean | null }[]
-      >();
+  const rollups = await loadKickoffProgressRollupsByQuoteId({
+    quoteIds,
+    awardedSupplierByQuoteId,
+  });
 
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        return map;
-      }
-      console.error("[customer projects] kickoff tasks query failed", {
-        quoteIdsCount: quoteIds.length,
-        supplierIdsCount: supplierIds.length,
-        error: serializeSupabaseError(error),
-      });
-      return map;
-    }
-
-    const totals = new Map<string, { total: number; completed: number }>();
-    for (const task of data ?? []) {
-      const quoteId = normalizeId(task.quote_id);
-      const supplierId = normalizeId(task.supplier_id);
-      if (!quoteId || !supplierId) continue;
-
-      // Enforce "winner only" aggregation even if the .in() filter returns
-      // rows for other suppliers.
-      const awardedSupplierId = awardedByQuoteId.get(quoteId);
-      if (!awardedSupplierId || awardedSupplierId !== supplierId) {
-        continue;
-      }
-
-      const key = `${quoteId}:${supplierId}`;
-      const existing = totals.get(key) ?? { total: 0, completed: 0 };
-      existing.total += 1;
-      if (task.completed) {
-        existing.completed += 1;
-      }
-      totals.set(key, existing);
-    }
-
-    for (const [key, value] of totals) {
-      const isComplete = value.total > 0 && value.completed >= value.total;
-      map.set(key, {
-        totalTasks: value.total,
-        completedTasks: value.completed,
-        isComplete,
-      });
-    }
-
-    return map;
-  } catch (err) {
-    if (isMissingTableOrColumnError(err)) {
-      return map;
-    }
-    console.error("[customer projects] kickoff aggregation crashed", {
-      error: serializeSupabaseError(err) ?? err,
+  for (const quoteId of quoteIds) {
+    const normalizedQuoteId = normalizeId(quoteId);
+    if (!normalizedQuoteId) continue;
+    const r = rollups.get(normalizedQuoteId);
+    if (!r) continue;
+    map.set(normalizedQuoteId, {
+      totalTasks: r.totalTasks,
+      completedTasks: r.completedTasks,
+      isComplete: r.isComplete,
     });
-    return map;
   }
+
+  return map;
 }
 
 async function loadUploadMap(uploadIds: string[]): Promise<Map<string, UploadRow>> {

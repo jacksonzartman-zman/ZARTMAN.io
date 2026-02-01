@@ -57,6 +57,17 @@ function formatKickoffStatus(summary: {
   return { label, detail, tone };
 }
 
+function formatKickoffRollupLine(summary: {
+  totalTasks: number;
+  completedTasks: number;
+}): string {
+  const total = Math.max(0, Math.floor(summary.totalTasks ?? 0));
+  const completed = Math.max(0, Math.floor(summary.completedTasks ?? 0));
+  if (total <= 0) return "Kickoff: —";
+  const clampedCompleted = Math.min(total, completed);
+  return `Kickoff: ${clampedCompleted}/${total} complete`;
+}
+
 type CustomerProjectsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -234,6 +245,7 @@ export default async function CustomerProjectsPage({
                         : "Supplier pending";
                       const originFileLabel = extractOriginFileLabel(project.projectName);
                       const kickoff = formatKickoffStatus(project.kickoff);
+                      const kickoffRollupLine = formatKickoffRollupLine(project.kickoff);
                       const canNudge =
                         Boolean(project.awardedSupplierId) && !project.kickoff.isComplete;
                       const summary = messageSummary[project.id];
@@ -284,6 +296,10 @@ export default async function CustomerProjectsPage({
                                   </span>
                                 ) : null}
                               </div>
+
+                              <p className="hidden md:block mt-1 min-w-0 truncate text-xs text-slate-600">
+                                {kickoffRollupLine}
+                              </p>
 
                               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-slate-500">
                                 <Link

@@ -3,6 +3,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { loadKickoffProgressRollupsByQuoteId } from "@/server/quotes/kickoffTasks";
 
 type AwardedProjectQuoteRow = {
   id: string;
@@ -152,7 +153,7 @@ export async function getSupplierAwardedQuotesForProjects({
   const [uploadById, customerById, kickoffByQuoteId] = await Promise.all([
     loadUploadMap(uploadIds),
     loadCustomerMap(customerIds),
-    loadKickoffSummaryMap({
+    loadKickoffRollupsByQuoteId({
       quoteIds: quoteIdsForKickoff,
       supplierId: normalizedSupplierId,
     }),
@@ -263,7 +264,7 @@ async function loadCustomerMap(
   return map;
 }
 
-async function loadKickoffSummaryMap({
+async function loadKickoffRollupsByQuoteId({
   quoteIds,
   supplierId,
 }: {
@@ -271,59 +272,27 @@ async function loadKickoffSummaryMap({
   supplierId: string;
 }): Promise<Map<string, SupplierProjectKickoffSummary>> {
   const map = new Map<string, SupplierProjectKickoffSummary>();
-  if (quoteIds.length === 0 || !supplierId) {
+  const normalizedSupplierId = normalizeId(supplierId);
+  if (quoteIds.length === 0 || !normalizedSupplierId) {
     return map;
   }
 
-  try {
-    const { data, error } = await supabaseServer()
-      .from("quote_kickoff_tasks")
-      .select("quote_id,completed")
-      .eq("supplier_id", supplierId)
-      .in("quote_id", quoteIds)
-      .returns<{ quote_id: string; completed: boolean | null }[]>();
+  const rollups = await loadKickoffProgressRollupsByQuoteId({
+    quoteIds,
+    supplierId: normalizedSupplierId,
+  });
 
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        return map;
-      }
-      console.error("[supplier projects] kickoff tasks query failed", {
-        quoteIdsCount: quoteIds.length,
-        supplierId,
-        error: serializeSupabaseError(error),
-      });
-      return map;
-    }
-
-    const totals = new Map<string, { total: number; completed: number }>();
-    for (const task of data ?? []) {
-      const quoteId = normalizeId(task.quote_id);
-      if (!quoteId) continue;
-      const existing = totals.get(quoteId) ?? { total: 0, completed: 0 };
-      existing.total += 1;
-      if (task.completed) {
-        existing.completed += 1;
-      }
-      totals.set(quoteId, existing);
-    }
-
-    for (const [quoteId, value] of totals) {
-      const isComplete = value.total > 0 && value.completed >= value.total;
-      map.set(quoteId, {
-        totalTasks: value.total,
-        completedTasks: value.completed,
-        isComplete,
-      });
-    }
-
-    return map;
-  } catch (err) {
-    if (isMissingTableOrColumnError(err)) {
-      return map;
-    }
-    console.error("[supplier projects] kickoff aggregation crashed", {
-      error: serializeSupabaseError(err) ?? err,
+  for (const quoteId of quoteIds) {
+    const normalizedQuoteId = normalizeId(quoteId);
+    if (!normalizedQuoteId) continue;
+    const r = rollups.get(normalizedQuoteId);
+    if (!r) continue;
+    map.set(normalizedQuoteId, {
+      totalTasks: r.totalTasks,
+      completedTasks: r.completedTasks,
+      isComplete: r.isComplete,
     });
-    return map;
   }
+
+  return map;
 }
